@@ -1,7 +1,7 @@
 const User = require('../model/auth');
 const bcrypt = require('bcryptjs');
 // const jwt = require('jsonwebtoken');
-
+const Firm = require("../model/firm")
 // 🔐 Register API
 exports.registerUser = async (req, res) => {
     // Log the full request body as soon as it is received
@@ -76,6 +76,8 @@ exports.registerUser = async (req, res) => {
         res.status(500).json({ message: 'Server error', error: err.message });
     }
 };
+
+
 // 🔑 Login API
 exports.loginUser = async (req, res) => {
     try {
@@ -130,7 +132,9 @@ exports.getUserByEmail = async (req, res) => {
 exports.getAllAdmins = async (req, res) => {
     console.log('🔍 Fetching all users with role "Admin"...');
     try {
-        const admins = await User.find({ role: 'Admin' });
+        // 1. Fetch all Admins
+        const admins = await User.find({ role: 'Admin' }).lean();
+
         if (!admins || admins.length === 0) {
             console.warn('⚠️ No Admin users found.');
             return res.status(404).json({
@@ -139,17 +143,31 @@ exports.getAllAdmins = async (req, res) => {
                 admins: []
             });
         }
+
         console.log(`✅ Found ${admins.length} Admin user(s).`);
+
+        // 2. Attach firms to each admin
+        const adminsWithFirms = await Promise.all(
+            admins.map(async (admin) => {
+                const firms = await Firm.find({ admins: admin._id }).select("name address phone").lean();
+                return {
+                    ...admin,
+                    firms
+                };
+            })
+        );
+
         res.status(200).json({
             success: true,
-            message: 'Admins fetched successfully',
-            admins
+            message: 'Admins with firms fetched successfully',
+            admins: adminsWithFirms
         });
+
     } catch (err) {
-        console.error('❌ Error fetching admins:', err);
+        console.error('❌ Error fetching admins with firms:', err);
         res.status(500).json({
             success: false,
-            message: 'Server error while fetching admins',
+            message: 'Server error while fetching admins with firms',
             error: err && err.message ? err.message : 'Unknown error'
         });
     }

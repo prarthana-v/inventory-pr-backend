@@ -3,7 +3,7 @@ const { createFirm, getAllFirms, getFirmById, getFirmsByAdminId, editFirm, delet
 const router = express.Router();
 
 router.post('/create-firm', createFirm)
-router.get('/all-firms', getAllFirms);
+router.post('/all-firms', getAllFirms);
 router.get('/getfirmbyid', getFirmById);
 router.get('/getfirms-admin', getFirmsByAdminId);
 router.put('/update-firm', editFirm);

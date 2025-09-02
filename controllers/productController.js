@@ -1,4 +1,5 @@
 const Product = require("../model/product");
+const WorkAssignment = require("../model/WorkAssignment")
 
 // Creates a new product using request body data
 exports.createProduct = async (req, res) => {
@@ -129,3 +130,37 @@ exports.deleteProduct = async (req, res) => {
         return res.status(500).json({ error: "Server error while deleting product." });
     }
 };
+
+exports.getAllClearedProducts = async (req, res) => {
+    try {
+        const clearedProducts = await WorkAssignment.find({ status: "Cleared" })
+            .populate({
+                path: "productId",
+                populate: {
+                    path: "categoryId", // also populate category inside product
+                    select: "name"
+                }
+            })
+            .lean();
+
+        return res.status(200).json({
+            success: true,
+            clearedProducts: clearedProducts.map(item => ({
+                _id: item.productId._id,          // product id
+                title: item.productId.title,
+                description: item.productId.description,
+                type: item.productId.type,
+                categoryId: item.productId.categoryId, // populated object { _id, name }
+                sku: item.productId.sku,
+                createdAt: item.productId.createdAt,
+                updatedAt: item.productId.updatedAt,
+                quantity: item.quantity            // from WorkAssignment
+            }))
+        });
+
+    } catch (err) {
+        console.error("🔥 Error in getAllClearedProducts:", err.message);
+        res.status(500).json({ message: 'Server error', error: err.message });
+    }
+};
+

@@ -21,7 +21,7 @@ exports.createSaleOrder = async (req, res) => {
         const formattedProducts = products.map(p => ({
             product: p.productId,
             quantity: p.quantity,
-            price: p.price, // ✅ required field added
+            price: p.price,
             discount: p.discount
         }));
 
@@ -51,9 +51,9 @@ exports.createSaleOrder = async (req, res) => {
                 const invProduct = inventory.products.find(p => p.product.toString() === item.productId);
                 if (!invProduct) continue;
 
-                const deductQty = Math.min(invProduct.avaliableStock, remainingToDeduct);
+                const deductQty = Math.min(invProduct.availableStock, remainingToDeduct);
                 if (deductQty > 0) {
-                    invProduct.avaliableStock -= deductQty;
+                    invProduct.availableStock -= deductQty;
                     remainingToDeduct -= deductQty;
                     await inventory.save({ session });
                 }

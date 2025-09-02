@@ -240,3 +240,8 @@ exports.getAssignedInventoryStatusCounts = async (req, res) => {
         res.status(500).json({ message: 'Server error', error: err.message });
     }
 };
+
+/**
+ * 🟢 Get all products assigned to a Job Worker with status 'Cleared'
+ * POST /jobworkers/cleared-products
+ */

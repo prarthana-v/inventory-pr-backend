@@ -5,7 +5,7 @@ const router = express.Router();
 router.post('/add-inventory', createInventory)
 router.put('/update-inventory', updateInventory)
 router.get('/get-inventory', getInventoryById)
-router.get('/all-inventory', getInventories);
+router.post('/all-inventory', getInventories);
 router.delete('/delete-inventory', deleteInventory)
 router.post('/assign-stock', assignToWorkers)
 router.put('/update-assignment-status', updateWorkAssignmentStatus)

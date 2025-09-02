@@ -160,12 +160,27 @@ exports.assignToWorkers = async (req, res) => {
 
 exports.getInventories = async (req, res) => {
     try {
-        const inventories = await Inventory.find()
+        const { userId } = req.body;
+        console.log("📥 Incoming Request Body:", req.body);
+
+        if (!userId) {
+            console.warn("⚠️ No userId provided in request body");
+            return res.status(400).json({
+                success: false,
+                message: "userId is required in request body"
+            });
+        }
+
+        console.log(`🔍 Fetching inventories issued by userId: ${userId} ...`);
+
+        const inventories = await Inventory.find({ issuedBy: userId })
             .populate("products.product", "name sku")
             .populate("vendor", "name")
             .populate("issuedBy", "name email")
             .populate("firm", "name")
             .sort({ createdAt: -1 });
+
+        console.log(`✅ Found ${inventories.length} inventories for userId: ${userId}`);
 
         res.json({
             success: true,
@@ -174,6 +189,7 @@ exports.getInventories = async (req, res) => {
         });
 
     } catch (err) {
+        console.error("🔥 Error in getInventories:", err.message);
         res.status(500).json({
             success: false,
             message: "Error fetching inventories",
