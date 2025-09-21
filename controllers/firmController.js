@@ -38,6 +38,48 @@ exports.createFirm = async (req, res) => {
  * Get all firms
  */
 
+// exports.getAllFirms = async (req, res) => {
+//     try {
+//         const { userId, role } = req.body;
+//         console.log("📥 Incoming request:", { userId, role });
+
+//         let firms = [];
+
+//         if (role === "SuperAdmin") {
+//             console.log("👑 Role is SuperAdmin → fetching all firms with admins...");
+
+//             firms = await Firm.find()
+//                 .populate({
+//                     path: "admins",
+//                     match: { role: "Admin" }, // only bring admin role users
+//                     select: "name email role"
+//                 })
+//                 .lean();
+
+//             // filter out firms with no admins after population
+//             firms = firms.filter(firm => firm.admins.length > 0);
+
+//             console.log(`✅ SuperAdmin fetched ${firms.length} firms.`);
+//             console.log("📊 Firms data:", JSON.stringify(firms, null, 2));
+//         } else {
+//             console.log(`👤 Role is ${role} → fetching firms where user ${userId} is an admin...`);
+
+//             firms = await Firm.find({ admins: userId })
+//                 .populate("admins", "name email role")
+//                 .lean();
+
+//             console.log(`✅ User ${userId} fetched ${firms.length} firms.`);
+//             console.log("📊 Firms data:", JSON.stringify(firms, null, 2));
+//         }
+
+//         res.status(200).json({ success: true, firms });
+//     } catch (error) {
+//         console.error("❌ Error while fetching firms:", error.message);
+//         res.status(500).json({ success: false, message: "Server Error", error: error.message });
+//     }
+
+// };
+
 exports.getAllFirms = async (req, res) => {
     try {
         const { userId, role } = req.body;
@@ -46,30 +88,28 @@ exports.getAllFirms = async (req, res) => {
         let firms = [];
 
         if (role === "SuperAdmin") {
-            console.log("👑 Role is SuperAdmin → fetching all firms with admins...");
+            console.log("👑 Role is SuperAdmin → fetching ALL firms (with or without admins)...");
 
             firms = await Firm.find()
                 .populate({
                     path: "admins",
-                    match: { role: "Admin" }, // only bring admin role users
+                    match: { role: "Admin" }, // still only populate Admin users
                     select: "name email role"
                 })
                 .lean();
 
-            // filter out firms with no admins after population
-            firms = firms.filter(firm => firm.admins.length > 0);
-
             console.log(`✅ SuperAdmin fetched ${firms.length} firms.`);
-            console.log("📊 Firms data:", JSON.stringify(firms, null, 2));
-        } else {
-            console.log(`👤 Role is ${role} → fetching firms where user ${userId} is an admin...`);
+        } else if (role === "Admin") {
+            console.log(`👤 Role is Admin → fetching firms assigned to user ${userId}...`);
 
             firms = await Firm.find({ admins: userId })
                 .populate("admins", "name email role")
                 .lean();
 
-            console.log(`✅ User ${userId} fetched ${firms.length} firms.`);
-            console.log("📊 Firms data:", JSON.stringify(firms, null, 2));
+            console.log(`✅ Admin ${userId} fetched ${firms.length} firms.`);
+        } else {
+            console.warn(`⚠️ Role ${role} not authorized to fetch firms.`);
+            return res.status(403).json({ success: false, message: "Unauthorized role" });
         }
 
         res.status(200).json({ success: true, firms });
@@ -77,9 +117,7 @@ exports.getAllFirms = async (req, res) => {
         console.error("❌ Error while fetching firms:", error.message);
         res.status(500).json({ success: false, message: "Server Error", error: error.message });
     }
-
 };
-
 
 /**
  * GET /api/firms/:id

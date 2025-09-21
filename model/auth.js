@@ -18,7 +18,7 @@ const userSchema = new Schema({
     },
     role: {
         type: String,
-        enum: ['Admin', 'Employee', 'SuperAdmin'], // Defines the possible roles
+        enum: ['Admin', 'SuperAdmin'], // Defines the possible roles
         required: true,
     },
     // Stores the firm the user is currently operating under
@@ -31,6 +31,11 @@ const userSchema = new Schema({
         type: Schema.Types.ObjectId,
         ref: 'Firm',
     }],
+    plan: {
+        planId: { type: Schema.Types.ObjectId, ref: 'Plan' },
+        startDate: { type: Date },
+        endDate: { type: Date },
+    },
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

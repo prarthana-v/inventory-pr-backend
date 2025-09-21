@@ -1,7 +1,8 @@
 const User = require('../model/auth');
 const bcrypt = require('bcryptjs');
-// const jwt = require('jsonwebtoken');
 const Firm = require("../model/firm")
+const Plan = require("../model/plan");
+
 // 🔐 Register API
 exports.registerUser = async (req, res) => {
     // Log the full request body as soon as it is received
@@ -76,7 +77,6 @@ exports.registerUser = async (req, res) => {
         res.status(500).json({ message: 'Server error', error: err.message });
     }
 };
-
 
 // 🔑 Login API
 exports.loginUser = async (req, res) => {
@@ -173,6 +173,45 @@ exports.getAllAdmins = async (req, res) => {
     }
 };
 
+exports.getAllUsers = async (req, res) => {
+    console.log('🔍 Fetching all users with role "Admin"...');
+    try {
+        // 1. Fetch all users
+        const users = await User.find().populate('plan.planId').lean();  // ✅ model should be User, variable is users
+
+        console.log(`✅ Found ${users.length} user(s).`);
+
+        // 2. Attach firms to each user
+        const usersWithFirms = await Promise.all(
+            users.map(async (u) => {
+                const firms = await Firm.find({ admins: u._id })
+                    .select("name address phone")
+                    .lean();
+                return {
+                    ...u,
+                    firms
+                };
+            })
+        );
+        console.log(users); // 'Pending' | 'Active' | 'Expired'
+
+        res.status(200).json({
+            success: true,
+            message: 'Users with firms fetched successfully',
+            users: usersWithFirms, // plural here
+        });
+
+    } catch (err) {
+        console.error('❌ Error fetching admins with firms:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Server error while fetching admins with firms',
+            error: err?.message || 'Unknown error'
+        });
+    }
+};
+
+
 exports.deleteUserById = async (req, res) => {
     try {
         const { userId } = req.body;
@@ -187,5 +226,84 @@ exports.deleteUserById = async (req, res) => {
     } catch (err) {
         console.error('❌ Error deleting user:', err.message);
         res.status(500).json({ message: 'Server error', error: err.message });
+    }
+};
+
+// GET counts of users & plans
+exports.getCounts = async (req, res) => {
+    try {
+        console.log("📊 Fetching counts...");
+
+        const [userCount, planCount] = await Promise.all([
+            User.countDocuments(),
+            Plan.countDocuments(),
+        ]);
+
+        res.status(200).json({
+            success: true,
+            message: "Counts fetched successfully ✅",
+            data: {
+                users: userCount,
+                plans: planCount,
+            },
+        });
+    } catch (err) {
+        console.error("❌ Error fetching counts:", err.message);
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch counts",
+            error: err.message,
+        });
+    }
+};
+
+exports.assignPlan = async (req, res) => {
+    const userId = req.params.id;
+    console.log(req.params, 'userId')
+    const { planId, duration, durationUnit } = req.body;
+
+    if (!planId || !duration || !durationUnit) {
+        return res.status(400).json({ message: 'Plan ID, duration, and duration unit are required.' });
+    }
+
+    try {
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
+
+        const plan = await Plan.findById(planId);
+        if (!plan) {
+            return res.status(404).json({ message: 'Plan not found.' });
+        }
+
+        const startDate = new Date();
+        const endDate = new Date(startDate);
+
+        // Calculate the end date based on duration and unit
+        if (durationUnit === 'months') {
+            endDate.setMonth(endDate.getMonth() + parseInt(duration, 10));
+        } else if (durationUnit === 'years') {
+            endDate.setFullYear(endDate.getFullYear() + parseInt(duration, 10));
+        } else {
+            return res.status(400).json({ message: 'Invalid duration unit. Use "months" or "years".' });
+        }
+
+        user.plan = {
+            planId: planId,
+            startDate: startDate,
+            endDate: endDate,
+        };
+
+        await user.save();
+
+        // Populate plan details before sending back the response
+        const updatedUser = await User.findById(userId).populate('plan.planId', 'name');
+
+        res.status(200).json({ message: 'Plan assigned successfully!', user: updatedUser });
+
+    } catch (error) {
+        console.log('Error assigning plan:', error);
+        res.status(500).json({ message: 'Server error while assigning plan.' });
     }
 };
