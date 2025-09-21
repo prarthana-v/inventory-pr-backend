@@ -128,6 +128,7 @@ exports.assignToWorkers = async (req, res) => {
                 productId: w.productId,
                 jobworker: w.jobworker || null,
                 quantity: w.quantity,
+                availableQty: productInBatch.availableStock,   // <-- add this line
                 assignedBy,
                 issueDetails,
                 status: "Pending"
