@@ -10,6 +10,6 @@ router.use('/product', require('./productRoute'));
 router.use('/jobworker', require('./jobworkerRoute'));
 router.use('/inventory', require('./inventoryRoute'));
 router.use('/salesorder', require('./salesOrderRoute'));
-router.use('/plans', require('./planRoute'))
-/// Jobworker? karu ok
+router.use('/plans', require('./planRoute'));
+
 module.exports = router;

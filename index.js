@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const connectDB = require('./config/db');
 const cors = require('cors');
+const path = require("path");
+
 // Load env vars
 dotenv.config();
 connectDB();
@@ -11,6 +13,8 @@ const app = express();
 // Middlewares
 app.use(express.json()); // ✅ needed to parse JSON body
 app.use(express.urlencoded({ extended: true })); // for form-data
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
 app.use(cors());
 
 // Test route

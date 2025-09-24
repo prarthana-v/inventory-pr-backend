@@ -7,9 +7,10 @@ const WorkerAssignmentSchema = new mongoose.Schema({
     availableQty: { type: Number },
     jobworker: { type: mongoose.Schema.Types.ObjectId, ref: 'JobWorker' },
     status: { type: String, enum: ['Pending', 'InProgress', 'Cleared'], default: 'Pending' },
+    clearedQuantity: { type: Number, default: 0 },
     assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },  // Who assigned
     issueDetails: { type: String },
-    createdAt: { type: Date, default: Date.now }
+    createdAt: { type: Date, default: Date.now },
 });
 
 module.exports = mongoose.model('WorkAssignment', WorkerAssignmentSchema);

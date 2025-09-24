@@ -227,52 +227,48 @@ exports.deleteFirm = async (req, res) => {
  * POST /api/firms/assign
  * Assign a firm to an admin
  */
-exports.assignFirmToAdmin = async (req, res) => {
+exports.assignFirmsToAdmin = async (req, res) => {
     try {
-        const { firmId, adminId } = req.body;
-        console.log("assign firsm")
+        console.log("assign firms", req.body);
+        const { firmIds, adminId } = req.body;
 
-        if (!firmId || !adminId) {
-            console.warn("⚠️ firmId or adminId missing in request body.");
-            return res.status(400).json({ success: false, message: 'firmId and adminId are required.' });
+        // 1. Validate the input
+        if (!adminId || !firmIds || !Array.isArray(firmIds) || firmIds.length === 0) {
+            return res.status(400).json({ success: false, message: 'adminId and a non-empty array of firmIds are required.' });
         }
 
-        // 1. Check if firm exists
-        const firm = await Firm.findById(firmId);
-        if (!firm) {
-            console.warn(`⚠️ Firm not found: ${firmId}`);
-            return res.status(404).json({ success: false, message: 'Firm not found.' });
-        }
-
-        // 2. Check if user exists and is an Admin
+        // 2. Find the admin and verify their role
         const admin = await User.findById(adminId);
         if (!admin || admin.role !== 'Admin') {
-            console.warn(`⚠️ Invalid admin: ${adminId}`);
             return res.status(400).json({ success: false, message: 'User is not a valid Admin.' });
         }
 
-        // 3. Add admin to firm's admins[] if not already there
-        if (!firm.admins.includes(adminId)) {
-            firm.admins.push(adminId);
-            await firm.save();
-            console.log(`✅ Admin ${adminId} added to Firm ${firmId}`);
-        } else {
-            console.log(`ℹ️ Admin ${adminId} already in Firm ${firmId}`);
+        // 3. Add the admin's ID to the 'admins' array for all specified firms
+        const firmUpdateResult = await Firm.updateMany(
+            { _id: { $in: firmIds } }, // Find all firms whose ID is in the firmIds array
+            { $addToSet: { admins: adminId } } // Add the adminId to the 'admins' array if it's not already there
+        );
+
+        // Optional: Check if all firms were found and updated
+        if (firmUpdateResult.matchedCount !== firmIds.length) {
+            console.warn(`⚠️ Warning: Not all firms were found. Found ${firmUpdateResult.matchedCount} out of ${firmIds.length}.`);
         }
 
-        // 4. Add firm to admin’s accessibleFirms[] if not already there
-        if (!admin.accessibleFirms.includes(firmId)) {
-            admin.accessibleFirms.push(firmId);
-            await admin.save();
-            console.log(`✅ Firm ${firmId} added to Admin ${adminId}'s accessibleFirms`);
-        } else {
-            console.log(`ℹ️ Firm ${firmId} already in Admin ${adminId}'s accessibleFirms`);
-        }
+        // 4. Add all the firm IDs to the admin's 'accessibleFirms' array
+        await User.findByIdAndUpdate(
+            adminId,
+            { $addToSet: { accessibleFirms: { $each: firmIds } } } // Add each firmId to the 'accessibleFirms' array if not already present
+        );
 
-        return res.status(200).json({ success: true, message: 'Firm assigned to admin successfully.', firm, admin });
+        console.log(`✅ Successfully assigned ${firmUpdateResult.modifiedCount} new firms to admin ${adminId}`);
+
+        return res.status(200).json({
+            success: true,
+            message: 'Firms assigned to admin successfully.',
+        });
 
     } catch (error) {
-        console.error('❌ Error assigning firm to admin:', error.message);
+        console.error('❌ Error assigning firms to admin:', error.message);
         return res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };

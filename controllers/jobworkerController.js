@@ -5,10 +5,6 @@ const bcrypt = require('bcryptjs');
 const mongoose = require('mongoose');
 const WorkAssignment = require('../model/WorkAssignment');
 
-/**
- * 🚀 Create a new Job Worker
- * POST /jobworkers
- */
 exports.createJobWorker = async (req, res) => {
     try {
         const { name, phone, email, password } = req.body;
@@ -29,7 +25,10 @@ exports.createJobWorker = async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, 10);
         console.log('🔒 Password hashed successfully.');
 
-        const newWorker = await JobWorker.create({ name, phone, email, password: hashedPassword });
+        const newWorker = await JobWorker.create({
+            name, phone, email, password: hashedPassword,
+            profileImage: req.file ? `/uploads/${req.file.filename}` : null
+        });
 
         res.status(201).json({ sucess: true, message: "Job worker reated successfullyy !!", newWorker });
     } catch (err) {
@@ -38,10 +37,6 @@ exports.createJobWorker = async (req, res) => {
     }
 };
 
-/**
- * ✏️ Edit an existing Job Worker
- * PUT /jobworkers/:id
- */
 exports.updateJobWorker = async (req, res) => {
     try {
         const { jobWorkerId, name, phone, email, password } = req.body;
@@ -64,6 +59,7 @@ exports.updateJobWorker = async (req, res) => {
         if (password !== undefined) {
             worker.password = await bcrypt.hash(password, 10); // Hash the new password
         }
+        if (req.file) worker.profileImage = `/uploads/${req.file.filename}`;
 
         await worker.save();
 
@@ -79,31 +75,47 @@ exports.updateJobWorker = async (req, res) => {
     }
 };
 
-/**
- * 🗑️ Delete a Job Worker
- * DELETE /jobworkers/:id
- */
+// exports.deleteJobWorker = async (req, res) => {
+//     try {
+//         const { jobWorkerId } = req.body;
+//         const worker = await JobWorker.findByIdAndDelete(jobWorkerId);
+//         if (!worker) {
+//             return res.status(404).json({ message: 'Job Worker not found.' });
+//         }
+//         res.json({ message: 'Job Worker deleted.', worker });
+//     } catch (err) {
+//         res.status(500).json({ message: 'Server error', error: err.message });
+//     }
+// };
+
 exports.deleteJobWorker = async (req, res) => {
     try {
         const { jobWorkerId } = req.body;
-        const worker = await JobWorker.findByIdAndDelete(jobWorkerId);
+        const worker = await JobWorker.findOneAndUpdate(
+            { _id: jobWorkerId, isDeleted: false }, // Find a worker that is not already deleted
+            {
+                $set: {
+                    isDeleted: true,
+                    deletedAt: new Date()
+                }
+            },
+            { new: true } // Return the updated document
+        );
+
         if (!worker) {
             return res.status(404).json({ message: 'Job Worker not found.' });
         }
-        res.json({ message: 'Job Worker deleted.', worker });
+        res.json({ message: 'Job Worker deleted successfully.', worker });
     } catch (err) {
         res.status(500).json({ message: 'Server error', error: err.message });
     }
 };
 
-/**
- * 👀 View all Job Workers
- * GET /jobworkers
- */
 exports.getAllJobWorkers = async (req, res) => {
     try {
         console.log('Fetching all job workers...');
-        const workers = await JobWorker.find();
+
+        const workers = await JobWorker.find({ isDeleted: false });
 
         if (!workers || workers.length === 0) {
             console.warn('⚠️ No job workers found.');
@@ -130,9 +142,9 @@ exports.loginJobworker = async (req, res) => {
         }
 
         // Find the job worker by email
-        const jobWorker = await JobWorker.findOne({ email: email });
+        const jobWorker = await JobWorker.findOne({ email: email, isDeleted: false });
         if (!jobWorker) {
-            return res.status(404).json({ message: 'Job worker not found.' });
+            return res.status(404).json({ message: 'Job worker not found or has been deactivated.' });
         }
 
         // Compare the provided password with the stored hashed password
@@ -154,11 +166,6 @@ exports.loginJobworker = async (req, res) => {
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 }
-
-/**
- * 📦 Get total number of products assigned to a Job Worker
- * GET /jobworkers/:id/assigned-products-count
- */
 
 exports.getAssignedProductsCount = async (req, res) => {
     try {
@@ -241,7 +248,108 @@ exports.getAssignedInventoryStatusCounts = async (req, res) => {
     }
 };
 
-/**
- * 🟢 Get all products assigned to a Job Worker with status 'Cleared'
- * POST /jobworkers/cleared-products
- */
+exports.forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+        const worker = await JobWorker.findOne({ email });
+
+        if (!worker) {
+            // To prevent email enumeration, send a generic success message
+            // even if the user doesn't exist.
+            console.warn(`⚠️ Password reset attempt for non-existent email: ${email}`);
+            return res.status(200).json({ message: 'If a user with that email exists, an OTP has been sent.' });
+        }
+
+        // Generate a 6-digit OTP
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        console.log(`🔑 Generated OTP for ${email}: ${otp}`);
+
+        // Set OTP and expiration (e.g., 10 minutes from now)
+        worker.resetPasswordOtp = otp;
+        worker.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+        await worker.save();
+
+        // Send the OTP to the user's email
+        try {
+            await sendEmail({
+                email: worker.email,
+                subject: 'Your Password Reset OTP (Valid for 10 minutes)',
+                message: `You are receiving this email because you (or someone else) have requested the reset of a password. Your OTP is: ${otp}`,
+            });
+
+            res.status(200).json({ success: true, message: 'OTP sent to email!' });
+
+        } catch (emailError) {
+            console.error('❌ Email sending error:', emailError);
+            // Clear the OTP fields if email fails to send
+            worker.resetPasswordOtp = undefined;
+            worker.resetPasswordExpires = undefined;
+            await worker.save();
+            return res.status(500).json({ message: 'There was an error sending the email. Please try again later.' });
+        }
+
+    } catch (err) {
+        console.error('❌ Error in forgotPassword:', err.message);
+        res.status(500).json({ message: 'Server error', error: err.message });
+    }
+};
+
+exports.restoreJobWorker = async (req, res) => {
+    try {
+        const { jobWorkerId } = req.body;
+        const worker = await JobWorker.findOneAndUpdate(
+            { _id: jobWorkerId, isDeleted: true }, // Find a worker that is currently deleted
+            {
+                $set: {
+                    isDeleted: false,
+                    deletedAt: null
+                }
+            },
+            { new: true }
+        );
+
+        if (!worker) {
+            return res.status(404).json({ message: 'Deleted Job Worker not found.' });
+        }
+        res.json({ message: 'Job Worker restored successfully.', worker });
+    } catch (err) {
+        res.status(500).json({ message: 'Server error', error: err.message });
+    }
+};
+
+exports.resetPassword = async (req, res) => {
+    try {
+        const { email, otp, newPassword } = req.body;
+
+        if (!email || !otp || !newPassword) {
+            return res.status(400).json({ message: 'Email, OTP, and new password are required.' });
+        }
+
+        // Find worker by email with a valid, unexpired OTP
+        const worker = await JobWorker.findOne({
+            email,
+            resetPasswordOtp: otp,
+            resetPasswordExpires: { $gt: Date.now() }, // Check if the token is not expired
+        });
+
+        if (!worker) {
+            return res.status(400).json({ message: 'OTP is invalid or has expired.' });
+        }
+
+        // Hash the new password
+        worker.password = await bcrypt.hash(newPassword, 10);
+
+        // Clear the OTP fields so it can't be used again
+        worker.resetPasswordOtp = undefined;
+        worker.resetPasswordExpires = undefined;
+
+        await worker.save();
+
+        console.log(`✅ Password reset successfully for ${email}`);
+        res.status(200).json({ success: true, message: 'Password has been reset successfully.' });
+
+    } catch (err) {
+        console.error('❌ Error in resetPassword:', err.message);
+        res.status(500).json({ message: 'Server error', error: err.message });
+    }
+};

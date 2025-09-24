@@ -10,6 +10,7 @@ const jobWorkerSchema = new mongoose.Schema({
         type: String,
         trim: true
     },
+    profileImage: { type: String },
     email: {
         type: String,
         trim: true,
@@ -22,6 +23,17 @@ const jobWorkerSchema = new mongoose.Schema({
         required: true,
         trim: true
     },
+    isDeleted: {
+        type: Boolean,
+        default: false
+    },
+
+    deletedAt: {
+        type: Date,
+        default: null
+    },
+    resetPasswordOtp: String,
+    resetPasswordExpires: Date,
     createdAt: {
         type: Date,
         default: Date.now

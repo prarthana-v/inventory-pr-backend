@@ -5,6 +5,12 @@ const WorkAssignment = require("../model/WorkAssignment")
 exports.createProduct = async (req, res) => {
     try {
         console.log("📝 [CREATE] Request body:", req.body);
+        console.log("📄 [CREATE] File:", req.file);
+
+        if (!req.body.title || !req.body.categoryId || !req.file) {
+            console.warn("⚠️ [CREATE] Missing required fields: title, categoryId, or image");
+            return res.status(400).json({ error: "Missing required fields: title, categoryId, or image" });
+        }
 
         // Example: Check for required fields (adjust as needed)
         if (!req.body.title || !req.body.categoryId) {
@@ -12,14 +18,17 @@ exports.createProduct = async (req, res) => {
             return res.status(400).json({ error: "Missing required fields: title or categoryId" });
         }
 
-        const product = await Product.create(req.body);
+        const productData = {
+            ...req.body,
+            image: req.file.filename  // Save the file path to the image field
+        };
+
+        const product = await Product.create(productData);
+
         console.log("✅ [CREATE] Product created:", product);
         res.status(201).json(product);
     } catch (err) {
-        console.error("❌ [CREATE] Error:", err);
-        if (err.name === "ValidationError") {
-            return res.status(400).json({ error: err.message });
-        }
+        console.log("❌ [CREATE] Error:", err);
         res.status(500).json({ error: "Server error while creating product." });
     }
 };

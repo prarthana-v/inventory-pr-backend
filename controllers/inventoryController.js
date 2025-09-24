@@ -393,6 +393,60 @@ exports.updateWorkAssignmentStatus = async (req, res) => {
     }
 };
 
+exports.clearAssignmentQuantity = async (req, res) => {
+    try {
+        const { assignmentId, quantityToClear } = req.body;
+
+        // 1. Validation
+        if (!assignmentId || !quantityToClear) {
+            return res.status(400).json({ message: "assignmentId and quantityToClear are required." });
+        }
+
+        if (typeof quantityToClear !== 'number' || quantityToClear <= 0) {
+            return res.status(400).json({ message: "quantityToClear must be a positive number." });
+        }
+
+        // 2. Find the assignment
+        const assignment = await WorkAssignment.findById(assignmentId);
+        if (!assignment) {
+            return res.status(404).json({ message: "Work assignment not found." });
+        }
+
+        // 3. Check if trying to clear more than what's remaining
+        const remainingQuantity = assignment.quantity - assignment.clearedQuantity;
+        if (quantityToClear > remainingQuantity) {
+            return res.status(400).json({
+                message: `Cannot clear ${quantityToClear}. Only ${remainingQuantity} remaining to be cleared.`,
+                remainingQuantity: remainingQuantity
+            });
+        }
+
+        // 4. Update the cleared quantity
+        assignment.clearedQuantity += quantityToClear;
+
+        // 5. Update the status automatically based on the new cleared quantity
+        if (assignment.clearedQuantity === assignment.quantity) {
+            assignment.status = 'Cleared';
+        } else if (assignment.clearedQuantity > 0) {
+            assignment.status = 'InProgress';
+        }
+
+        // 6. Save the changes
+        await assignment.save();
+        console.log(`✅ Cleared ${quantityToClear} for assignment ${assignmentId}. New total cleared: ${assignment.clearedQuantity}`);
+
+        res.status(200).json({
+            success: true,
+            message: `Successfully cleared ${quantityToClear} units.`,
+            data: assignment
+        });
+
+    } catch (err) {
+        console.error("🔥 Error in clearAssignmentQuantity:", err);
+        res.status(500).json({ message: "Server error while clearing assignment quantity.", error: err.message });
+    }
+};
+
 exports.getInventoriesByJW = async (req, res) => {
     try {
         console.log("📦 Fetching inventories...");
@@ -438,12 +492,13 @@ exports.getInventoriesByJW = async (req, res) => {
             groupedAssignments[a.InventoryId][jobworkerId].products.push({
                 assignmentId: a._id, // 👈 WorkAssignment ID
                 product: a.productId,
+                clearedQuantity: a.clearedQuantity,
                 quantity: a.quantity,
                 issueDetails: a.issueDetails,
                 status: a.status
             });
 
-            console.log(`➡️ Added product ${a.productId?.name} (qty: ${a.quantity}) to jobworker ${jobworkerId}`);
+            console.log(`➡️ Added product ${a.productId?.name} (qty: ${a.quantity}), cleared Qty : ${a.clearedQuantity} to jobworker ${jobworkerId}`);
         });
 
         const finalData = inventories.map(inv => {

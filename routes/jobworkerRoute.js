@@ -1,15 +1,18 @@
 // vendor.routes.js
 const express = require('express');
-const { createJobWorker, getAllJobWorkers, deleteJobWorker, updateJobWorker, loginJobworker, getAssignedProductsCount, getAssignedInventoryStatusCounts } = require('../controllers/jobworkerController');
+const { createJobWorker, getAllJobWorkers, deleteJobWorker, updateJobWorker, loginJobworker, getAssignedProductsCount, getAssignedInventoryStatusCounts, forgotPassword, resetPassword, restoreJobWorker } = require('../controllers/jobworkerController');
 const router = express.Router();
 
 // 👇 API Endpoints
 router.post('/create-jobworker', createJobWorker);
-router.get('/all-jobworkers', getAllJobWorkers)         // Create vendor
-router.put('/update-jobworker', updateJobWorker);         // Update vendor
-router.delete('/delete-jobworker', deleteJobWorker);      // Delete vendor
+router.get('/all-jobworkers', getAllJobWorkers)
+router.put('/update-jobworker', updateJobWorker);
+router.delete('/delete-jobworker', deleteJobWorker);
 router.post('/login-jobworker', loginJobworker)
-router.post('/jobworker-inventory', getAssignedProductsCount); // Get assigned products count
+router.post('/jobworker-inventory', getAssignedProductsCount);
 router.post('/assigned-products-bystatus', getAssignedInventoryStatusCounts)
+router.post('/forgot-password', forgotPassword);
+router.post('/reset-password', resetPassword);
+router.put('/restore-jobworker', restoreJobWorker);
 
 module.exports = router;
