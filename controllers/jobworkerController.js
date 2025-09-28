@@ -353,3 +353,103 @@ exports.resetPassword = async (req, res) => {
         res.status(500).json({ message: 'Server error', error: err.message });
     }
 };
+
+// controllers/jobworkerController.js (a new controller file is a good idea)
+
+exports.getJobWorkerDashboard = async (req, res) => {
+    try {
+        const { jobworkerId } = req.body;
+
+        // 1. ✅ Validate Input
+        if (!jobworkerId || !mongoose.Types.ObjectId.isValid(jobworkerId)) {
+            return res.status(400).json({ success: false, message: "A valid jobworkerId is required." });
+        }
+        console.log(`📊 Generating dashboard for Job Worker: ${jobworkerId}`);
+
+        // 2. 🚀 Fetch all assignments for this worker, populating related data
+        const allAssignments = await WorkAssignment.find({ jobworker: jobworkerId })
+            .populate('productId', 'title image') // Get product name and image
+            .populate('challanId', 'challanNo challanDate') // Get challan details
+            .sort({ createdAt: -1 }) // Show most recent first
+            .lean(); // Use .lean() for faster read-only operations
+
+        if (allAssignments.length === 0) {
+            return res.status(200).json({
+                success: true,
+                message: "This job worker has no assignments.",
+                data: {
+                    summary: { /* Provide zeroed-out summary */ },
+                    details: []
+                }
+            });
+        }
+
+        // 3. 🧠 Process the data to create the summary and detailed view
+        const summaryStats = {
+            totalQuantityAssigned: 0,
+            totalQuantityCleared: 0,
+            totalShortage: 0,
+            totalSeconds: 0,
+            openAssignments: 0,
+            clearedAssignments: 0
+        };
+
+        const groupedByChallan = {};
+
+        for (const assignment of allAssignments) {
+            // A. Calculate Summary Stats
+            summaryStats.totalQuantityAssigned += assignment.quantity;
+            summaryStats.totalQuantityCleared += assignment.clearedQuantity;
+            summaryStats.totalShortage += assignment.lostlQuantity;
+            summaryStats.totalSeconds += assignment.damagedQuantity;
+
+            if (assignment.status === 'Cleared') {
+                summaryStats.clearedAssignments++;
+            } else {
+                summaryStats.openAssignments++;
+            }
+
+            // B. Group assignments by their challan
+            const challan = assignment.challanId;
+            if (!challan) continue; // Skip if for some reason a challan isn't linked
+
+            if (!groupedByChallan[challan._id]) {
+                groupedByChallan[challan._id] = {
+                    challanId: challan._id,
+                    challanNo: challan.challanNo,
+                    challanDate: challan.challanDate,
+                    assignments: []
+                };
+            }
+            // Push only the relevant assignment details, not the whole object
+            groupedByChallan[challan._id].assignments.push({
+                assignmentId: assignment._id,
+                product: assignment.productId,
+                status: assignment.status,
+                quantityAssigned: assignment.quantity,
+                quantityCleared: assignment.clearedQuantity,
+                shortage: assignment.lostlQuantity,
+                seconds: assignment.damagedQuantity,
+                assignedAt: assignment.createdAt
+            });
+        }
+
+        // 4. 📦 Prepare the final response object
+        const responseData = {
+            summary: summaryStats,
+            details: Object.values(groupedByChallan) // Convert the grouped object into an array
+        };
+
+        console.log("✅ Job worker dashboard data prepared successfully.");
+
+        res.status(200).json({
+            success: true,
+            message: "Job worker dashboard data fetched successfully.",
+            data: responseData
+        });
+
+    } catch (err) {
+        console.log("🔥 Error generating job worker dashboard:", err);
+        res.status(500).json({ success: false, message: "Server Error", error: err.message });
+    }
+};

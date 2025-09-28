@@ -10,7 +10,6 @@ const jobWorkerSchema = new mongoose.Schema({
         type: String,
         trim: true
     },
-    profileImage: { type: String },
     email: {
         type: String,
         trim: true,

@@ -1,11 +1,14 @@
 const Inventory = require("../model/inventory");
 const WorkAssignment = require('../model/WorkAssignment');
+const Product = require("../model/product");
+const Challan = require("../model/Challan");
 const mongoose = require("mongoose");
 
 exports.createInventory = async (req, res) => {
     try {
+        const session = await mongoose.startSession();
+        session.startTransaction();
         console.log("🔄 [createInventory] Incoming request body:", JSON.stringify(req.body, null, 2));
-
         const { products, vendor, issuedBy, firm, notes, challanNo, challanDate } = req.body;
 
         // Validation logs
@@ -30,6 +33,7 @@ exports.createInventory = async (req, res) => {
             console.log(`🔧 [createInventory] Processing product[${idx}] → id: ${p.product}, qty: ${p.quantity}, discount: ${p.discount || 0}`);
             return {
                 product: p.product,
+                price: p.price || 0,
                 quantity: p.quantity,
                 availableStock: p.quantity,   // Initialize available stock
                 discount: p.discount || 0
@@ -37,7 +41,6 @@ exports.createInventory = async (req, res) => {
         });
         console.log(normalizedProducts, 'normalizedProducts')
 
-        // ✅ Create new batch
         const newBatch = new Inventory({
             products: normalizedProducts,
             vendor,
@@ -48,118 +51,355 @@ exports.createInventory = async (req, res) => {
             challanDate
         });
 
-        console.log("📝 [createInventory] New Inventory object created, saving to DB...");
+        await newBatch.save({ session });
 
-        await newBatch.save();
+        // 👇 **NEW LOGIC: UPDATE CENTRAL PRODUCT STOCK**
+        for (const p of normalizedProducts) {
+            await Product.findByIdAndUpdate(
+                p.product,
+                { $inc: { totalAvailableStock: p.quantity } }, // Use $inc to safely add quantity
+                { session }
+            );
+        }
+
         console.log(`✅ [createInventory] Inventory batch saved successfully → _id: ${newBatch._id}, totalProducts: ${products.length}`);
+        await session.commitTransaction();
 
         res.status(201).json({
             success: true,
-            message: "Inventory batch created successfully.",
+            message: "Inventory batch created and stock updated successfully.",
             data: newBatch
         });
 
     } catch (err) {
-        console.error("🔥 [createInventory] Error:", err);
-        res.status(500).json({
-            success: false,
-            message: "Server error while creating inventory batch.",
-            error: err.message
-        });
+        await session.abortTransaction();
+        console.log("🔥 [createInventory] Error:", err);
+        res.status(500).json({ success: false, message: "Server error.", error: err.message });
+    } finally {
+        session.endSession();
     }
 };
 
+// exports.assignToWorkers = async (req, res) => {
+//     try {
+//         const { inventoryId, workers, assignedBy, issueDetails } = req.body;
+//         console.log(req.body, 'req.body')
+
+//         if (!inventoryId || !workers || !Array.isArray(workers) || workers.length === 0) {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "inventoryId and at least one worker with quantity are required."
+//             });
+//         }
+
+//         // ✅ Fetch inventory batch
+//         const batch = await Inventory.findById(inventoryId);
+//         if (!batch) {
+//             console.log("inventoryId batch not found.", inventoryId);
+//             return res.status(404).json({ success: false, message: "inventoryId batch not found." });
+//         }
+
+//         console.log("==== INVENTORY BATCH LOG START ====");
+//         console.log(JSON.stringify(batch, null, 2));
+//         console.log("==== INVENTORY BATCH LOG END ====");
+
+//         const createdAssignments = [];
+
+//         // ✅ Iterate over workers and update correct product stock
+//         for (const w of workers) {
+//             const productInBatch = batch.products.find(
+//                 p => p.product.toString() === w.productId
+//             );
+
+//             if (!productInBatch) {
+//                 console.log(`Product ${w.productId} not found in this inventory batch`)
+//                 return res.status(400).json({
+//                     success: false,
+//                     message: `Product ${w.productId} not found in this inventory batch`
+//                 });
+//             }
+
+//             // ✅ Check stock for this product
+//             if (productInBatch.availableStock < w.quantity) {
+//                 console.log(
+//                     `Not enough stock for product ${w.productId}. Available: ${productInBatch.availableStock}, Needed: ${w.quantity}`
+//                 );
+//                 return res.status(400).json({
+//                     success: false,
+//                     message: `Not enough stock for product ${w.productId}. Available: ${productInBatch.availableStock}, Needed: ${w.quantity}`
+//                 });
+//             }
+
+//             // ✅ Deduct stock
+//             productInBatch.availableStock -= w.quantity;
+
+//             // ✅ Create assignment record
+//             const assignment = new WorkAssignment({
+//                 InventoryId: inventoryId,
+//                 productId: w.productId,
+//                 jobworker: w.jobworker || null,
+//                 quantity: w.quantity,
+//                 availableQty: productInBatch.availableStock,   // <-- add this line
+//                 assignedBy,
+//                 issueDetails,
+//                 status: "Pending"
+//             });
+
+//             await assignment.save();
+//             createdAssignments.push(assignment);
+//         }
+
+//         // ✅ Save updated inventory after processing all workers
+//         await batch.save();
+
+//         console.log(`📤 Assigned from Batch:${inventoryId} → ${workers.length} workers`);
+
+//         res.status(201).json({
+//             success: true,
+//             message: "Inventory assigned successfully.",
+//             data: createdAssignments
+//         });
+
+//     } catch (err) {
+//         console.error("🔥 Error assigning inventory:", err);
+//         res.status(500).json({
+//             success: false,
+//             message: "Server error while assigning inventory.",
+//             error: err.message
+//         });
+//     }
+// };
+
+// controllers/inventoryController.js
+
+// exports.assignToWorkers = async (req, res) => {
+//     const { workers, assignedBy, issueDetails } = req.body; // workers is an array like [{ productId, quantity, jobworker }]
+
+//     const session = await mongoose.startSession();
+//     session.startTransaction();
+
+//     try {
+//         if (!workers || !Array.isArray(workers) || workers.length === 0) {
+//             return res.status(400).json({ message: "Workers array with productId and quantity is required." });
+//         }
+
+//         const createdAssignments = [];
+
+//         for (const worker of workers) {
+//             const { productId, quantity: quantityToAssign, jobworker, price } = worker;
+
+//             // 1. ✅ Check the central stock first
+//             const product = await Product.findById(productId).session(session);
+//             if (!product || product.totalAvailableStock < quantityToAssign) {
+//                 throw new Error(`Not enough stock for product ${product?.title || productId}. Available: ${product?.totalAvailableStock}, Required: ${quantityToAssign}`);
+//             }
+
+//             // 2. 📦 Find inventory batches with available stock for this product (oldest first - FIFO)
+//             const inventoryBatches = await Inventory.find({
+//                 "products.product": productId,
+//                 "products.availableStock": { $gt: 0 }
+//             }).sort({ challanDate: 1 }).session(session);
+
+//             let remainingToAssign = quantityToAssign;
+//             const sourceBatches = []; // To track where stock came from
+
+//             // 3. 📉 Deduct stock from batches using FIFO
+//             for (const batch of inventoryBatches) {
+//                 if (remainingToAssign <= 0) break;
+
+//                 const productInBatch = batch.products.find(p => p.product.toString() === productId);
+
+//                 if (productInBatch && productInBatch.availableStock > 0) {
+//                     const takeFromThisBatch = Math.min(remainingToAssign, productInBatch.availableStock);
+
+//                     productInBatch.availableStock -= takeFromThisBatch;
+//                     remainingToAssign -= takeFromThisBatch;
+
+//                     sourceBatches.push({
+//                         inventoryId: batch._id,
+//                         quantityTaken: takeFromThisBatch
+//                     });
+
+//                     await batch.save({ session }); // Save the updated batch
+//                 }
+//             }
+
+//             // 4. ⬇️ Update the central stock count on the Product model
+//             product.totalAvailableStock -= quantityToAssign;
+//             await product.save({ session });
+
+//             // 5. 📝 Create the new WorkAssignment record
+//             const assignment = new WorkAssignment({
+//                 productId,
+//                 quantity: quantityToAssign,
+//                 jobworker,
+//                 assignedBy,
+//                 issueDetails,
+//                 sourceBatches, // Add the traceability info
+//                 status: "Pending"
+//             });
+
+//             await assignment.save({ session });
+//             createdAssignments.push(assignment);
+//         }
+
+//         await session.commitTransaction();
+
+//         res.status(201).json({
+//             success: true,
+//             message: "Work assigned successfully using aggregated stock.",
+//             data: createdAssignments
+//         });
+
+//     } catch (err) {
+//         await session.abortTransaction();
+//         console.error("🔥 Error assigning work:", err);
+//         res.status(400).json({ success: false, message: err.message });
+//     } finally {
+//         session.endSession();
+//     }
+// };
+
+async function getNextChallanNumber() {
+    const lastChallan = await Challan.findOne().sort({ createdAt: -1 });
+    if (!lastChallan) {
+        return "CH-00001";
+    }
+    const lastNum = parseInt(lastChallan.challanNo.split('-')[1]);
+    const nextNum = (lastNum + 1).toString().padStart(5, '0');
+    return `CH-${nextNum}`;
+}
+
 exports.assignToWorkers = async (req, res) => {
+    const { jobworkerId, assignedBy, notes, productsToAssign } = req.body;
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
     try {
-        const { inventoryId, workers, assignedBy, issueDetails } = req.body;
-        console.log(req.body, 'req.body')
-
-        if (!inventoryId || !workers || !Array.isArray(workers) || workers.length === 0) {
-            return res.status(400).json({
-                success: false,
-                message: "inventoryId and at least one worker with quantity are required."
-            });
+        if (!jobworkerId || !productsToAssign || productsToAssign.length === 0) {
+            throw new Error("jobworkerId and at least one product to assign are required.");
         }
 
-        // ✅ Fetch inventory batch
-        const batch = await Inventory.findById(inventoryId);
-        if (!batch) {
-            console.log("inventoryId batch not found.", inventoryId);
-            return res.status(404).json({ success: false, message: "inventoryId batch not found." });
-        }
-
-        console.log("==== INVENTORY BATCH LOG START ====");
-        console.log(JSON.stringify(batch, null, 2));
-        console.log("==== INVENTORY BATCH LOG END ====");
+        const newChallan = new Challan({
+            challanNo: await getNextChallanNumber(),
+            jobworker: jobworkerId,
+            dispatchedBy: assignedBy,
+            notes: notes,
+            assignments: []
+        });
+        await newChallan.save({ session });
 
         const createdAssignments = [];
+        const assignmentIds = [];
+        const inventoryUpdateOps = [];
 
-        // ✅ Iterate over workers and update correct product stock
-        for (const w of workers) {
-            const productInBatch = batch.products.find(
-                p => p.product.toString() === w.productId
-            );
+        for (const product of productsToAssign) {
+            const { productId, quantity: quantityToAssign, price } = product;
 
-            if (!productInBatch) {
-                console.log(`Product ${w.productId} not found in this inventory batch`)
-                return res.status(400).json({
-                    success: false,
-                    message: `Product ${w.productId} not found in this inventory batch`
-                });
+            // FIX 1: Renamed 'product' to 'productDoc' to avoid shadowing
+            const productDoc = await Product.findById(productId).session(session);
+            if (!productDoc || productDoc.totalAvailableStock < quantityToAssign) {
+                throw new Error(`Not enough stock for product ${productDoc?.name || productId}. Available: ${productDoc?.totalAvailableStock}, Required: ${quantityToAssign}`);
             }
 
-            // ✅ Check stock for this product
-            if (productInBatch.availableStock < w.quantity) {
-                console.log(
-                    `Not enough stock for product ${w.productId}. Available: ${productInBatch.availableStock}, Needed: ${w.quantity}`
-                );
-                return res.status(400).json({
-                    success: false,
-                    message: `Not enough stock for product ${w.productId}. Available: ${productInBatch.availableStock}, Needed: ${w.quantity}`
-                });
+            const inventoryBatches = await Inventory.find({
+                "products.product": productId,
+                "products.availableStock": { $gt: 0 }
+            }).sort({ challanDate: 1 }).session(session);
+
+            let remainingToAssign = quantityToAssign;
+            const sourceBatches = [];
+
+            for (const batch of inventoryBatches) {
+                if (remainingToAssign <= 0) break;
+                const productInBatch = batch.products.find(p => p.product.toString() === productId);
+
+                if (productInBatch && productInBatch.availableStock > 0) {
+                    const takeFromThisBatch = Math.min(remainingToAssign, productInBatch.availableStock);
+                    const newStockLevel = productInBatch.availableStock - takeFromThisBatch;
+                    remainingToAssign -= takeFromThisBatch;
+
+                    sourceBatches.push({
+                        inventoryId: batch._id,
+                        quantityTaken: takeFromThisBatch
+                    });
+
+                    // IMPROVEMENT: Instead of saving, add the update to our operations array
+                    inventoryUpdateOps.push({
+                        updateOne: {
+                            filter: { "_id": batch._id, "products.product": productId },
+                            update: { "$set": { "products.$.availableStock": newStockLevel } }
+                        }
+                    });
+                }
             }
 
-            // ✅ Deduct stock
-            productInBatch.availableStock -= w.quantity;
+            productDoc.totalAvailableStock -= quantityToAssign;
+            // productDoc.price = price;
+            await productDoc.save({ session });
 
-            // ✅ Create assignment record
             const assignment = new WorkAssignment({
-                InventoryId: inventoryId,
-                productId: w.productId,
-                jobworker: w.jobworker || null,
-                quantity: w.quantity,
-                availableQty: productInBatch.availableStock,   // <-- add this line
+                productId,
+                quantity: quantityToAssign,
+                price: price || 0,
+                jobworker: jobworkerId,
                 assignedBy,
-                issueDetails,
-                status: "Pending"
+                challanId: newChallan._id,
+                sourceBatches: sourceBatches,
+                status: "Pending",
+                issueDetails: notes // FIX 2: Using the defined 'notes' variable
             });
 
-            await assignment.save();
-            createdAssignments.push(assignment);
+            const savedAssignment = await assignment.save({ session });
+            createdAssignments.push(savedAssignment);
+            assignmentIds.push(savedAssignment._id);
         }
 
-        // ✅ Save updated inventory after processing all workers
-        await batch.save();
+        // IMPROVEMENT: Execute all inventory updates in one go
+        if (inventoryUpdateOps.length > 0) {
+            await Inventory.bulkWrite(inventoryUpdateOps, { session });
+        }
 
-        console.log(`📤 Assigned from Batch:${inventoryId} → ${workers.length} workers`);
+        newChallan.assignments = assignmentIds;
+        await newChallan.save({ session });
+
+        await session.commitTransaction();
 
         res.status(201).json({
             success: true,
-            message: "Inventory assigned successfully.",
-            data: createdAssignments
+            message: `Challan ${newChallan.challanNo} created and products assigned successfully.`,
+            data: { challan: newChallan, assignments: createdAssignments }
         });
 
     } catch (err) {
-        console.error("🔥 Error assigning inventory:", err);
-        res.status(500).json({
-            success: false,
-            message: "Server error while assigning inventory.",
-            error: err.message
+        await session.abortTransaction();
+        console.error("🔥 Error assigning work:", err);
+        res.status(400).json({ success: false, message: err.message });
+    } finally {
+        session.endSession();
+    }
+};
+
+exports.getProductStockSummary = async (req, res) => {
+    try {
+        // Fetch all products with their total available stock
+        const stockSummary = await Product.find({})
+            .select("name sku totalAvailableStock") // Select only the fields you need
+            .sort({ name: 1 });
+
+        res.status(200).json({
+            success: true,
+            message: "Product stock summary fetched successfully.",
+            data: stockSummary
         });
+    } catch (err) {
+        console.error("🔥 Error fetching product stock summary:", err);
+        res.status(500).json({ success: false, message: "Server error." });
     }
 };
 
 exports.getInventories = async (req, res) => {
+
     try {
         const { userId } = req.body;
         console.log("📥 Incoming Request Body:", req.body);
@@ -243,7 +483,7 @@ exports.deleteInventory = async (req, res) => {
         }
 
         // 🚮 Attempt delete
-        const deletedLog = await InventoryLog.findByIdAndDelete(id);
+        const deletedLog = await Inventory.findByIdAndDelete(id);
 
         if (!deletedLog) {
             console.warn(`⚠️ Inventory log not found for ID: ${id}`);
@@ -320,7 +560,7 @@ exports.updateInventory = async (req, res) => {
         }
 
         // ✏️ Attempt update
-        const updatedLog = await InventoryLog.findByIdAndUpdate(
+        const updatedLog = await Inventory.findByIdAndUpdate(
             id,
             { $set: updateData },
             { new: true, runValidators: true }
@@ -352,182 +592,229 @@ exports.updateInventory = async (req, res) => {
     }
 };
 
-exports.updateWorkAssignmentStatus = async (req, res) => {
+exports.getAssignmentsByJobWorker = async (req, res) => {
     try {
-        const { assignmentId, status } = req.body;
+        console.log("🚚 Fetching all challans and grouping by job worker...");
 
-        if (!assignmentId || !status) {
-            console.log('assignmentId and status are required.')
-            return res.status(400).json({
-                success: false,
-                message: "assignmentId and status are required."
-            });
-        }
-
-        const updatedAssignment = await WorkAssignment.findByIdAndUpdate(
-            assignmentId,
-            { $set: { status } },
-            { new: true, runValidators: true }
-        );
-
-        if (!updatedAssignment) {
-            console.log('Work assignment not found.')
-            return res.status(404).json({
-                success: false,
-                message: "Work assignment not found."
-            });
-        }
-
-        res.json({
-            success: true,
-            message: "Work assignment status updated successfully.",
-            data: updatedAssignment
-        });
-    } catch (err) {
-        console.log("🔥 Error updating work assignment status:", err);
-        res.status(500).json({
-            success: false,
-            message: "Server error while updating work assignment status.",
-            error: err.message
-        });
-    }
-};
-
-exports.clearAssignmentQuantity = async (req, res) => {
-    try {
-        const { assignmentId, quantityToClear } = req.body;
-
-        // 1. Validation
-        if (!assignmentId || !quantityToClear) {
-            return res.status(400).json({ message: "assignmentId and quantityToClear are required." });
-        }
-
-        if (typeof quantityToClear !== 'number' || quantityToClear <= 0) {
-            return res.status(400).json({ message: "quantityToClear must be a positive number." });
-        }
-
-        // 2. Find the assignment
-        const assignment = await WorkAssignment.findById(assignmentId);
-        if (!assignment) {
-            return res.status(404).json({ message: "Work assignment not found." });
-        }
-
-        // 3. Check if trying to clear more than what's remaining
-        const remainingQuantity = assignment.quantity - assignment.clearedQuantity;
-        if (quantityToClear > remainingQuantity) {
-            return res.status(400).json({
-                message: `Cannot clear ${quantityToClear}. Only ${remainingQuantity} remaining to be cleared.`,
-                remainingQuantity: remainingQuantity
-            });
-        }
-
-        // 4. Update the cleared quantity
-        assignment.clearedQuantity += quantityToClear;
-
-        // 5. Update the status automatically based on the new cleared quantity
-        if (assignment.clearedQuantity === assignment.quantity) {
-            assignment.status = 'Cleared';
-        } else if (assignment.clearedQuantity > 0) {
-            assignment.status = 'InProgress';
-        }
-
-        // 6. Save the changes
-        await assignment.save();
-        console.log(`✅ Cleared ${quantityToClear} for assignment ${assignmentId}. New total cleared: ${assignment.clearedQuantity}`);
-
-        res.status(200).json({
-            success: true,
-            message: `Successfully cleared ${quantityToClear} units.`,
-            data: assignment
-        });
-
-    } catch (err) {
-        console.error("🔥 Error in clearAssignmentQuantity:", err);
-        res.status(500).json({ message: "Server error while clearing assignment quantity.", error: err.message });
-    }
-};
-
-exports.getInventoriesByJW = async (req, res) => {
-    try {
-        console.log("📦 Fetching inventories...");
-
-        const inventories = await Inventory.find()
-            .populate("vendor", "name")
-            .populate("issuedBy", "name email")
-            .populate("firm", "name")
-            .sort({ createdAt: -1 })
+        // 👇 Key change: We now query the Challan model as our starting point.
+        const allChallans = await Challan.find({})
+            .populate('jobworker', 'name phone')
+            .populate({
+                path: 'assignments',
+                populate: {
+                    path: 'productId',
+                    select: 'title sku' // Select only the product fields you need
+                }
+            })
+            .sort({ challanDate: -1 }) // Show most recent challans first
             .lean();
 
-        console.log("✅ Inventories found:", inventories.length);
+        if (!allChallans || allChallans.length === 0) {
+            return res.status(200).json({ success: true, message: "No assignments found.", data: [] });
+        }
 
-        const inventoryIds = inventories.map(inv => inv._id);
-        console.log("🆔 Inventory IDs:", inventoryIds);
-
-        console.log("🔎 Fetching work assignments for inventories...");
-        const assignments = await WorkAssignment.find({
-            InventoryId: { $in: inventoryIds }
-        })
-            .populate("productId", "name sku")
-            .populate("jobworker", "name phone")
-            .lean();
-
-        console.log("✅ WorkAssignments found:", assignments);
-
-        const groupedAssignments = {};
-        assignments.forEach(a => {
-            console.log(`📌 Processing assignment: ${a._id} for Inventory: ${a.InventoryId}`);
-
-            if (!groupedAssignments[a.InventoryId]) {
-                groupedAssignments[a.InventoryId] = {};
+        // 2. Group the fetched challans by job worker
+        const groupedByJobWorker = allChallans.reduce((acc, challan) => {
+            // Skip any challans that might have a missing jobworker reference
+            if (!challan.jobworker) {
+                return acc;
             }
 
-            const jobworkerId = a.jobworker?._id?.toString() || "unassigned";
-            if (!groupedAssignments[a.InventoryId][jobworkerId]) {
-                groupedAssignments[a.InventoryId][jobworkerId] = {
-                    jobworker: a.jobworker || null,
-                    products: []
+            const jwId = challan.jobworker._id.toString();
+
+            // If this is the first time we see this job worker, initialize their entry
+            if (!acc[jwId]) {
+                acc[jwId] = {
+                    jobworker: challan.jobworker,
+                    challans: [] // We will now have an array of challans
                 };
             }
 
-            groupedAssignments[a.InventoryId][jobworkerId].products.push({
-                assignmentId: a._id, // 👈 WorkAssignment ID
-                product: a.productId,
-                clearedQuantity: a.clearedQuantity,
-                quantity: a.quantity,
-                issueDetails: a.issueDetails,
-                status: a.status
-            });
+            // Add the entire challan (which now contains its assignments) to the list
+            acc[jwId].challans.push(challan);
 
-            console.log(`➡️ Added product ${a.productId?.name} (qty: ${a.quantity}), cleared Qty : ${a.clearedQuantity} to jobworker ${jobworkerId}`);
-        });
+            return acc;
+        }, {});
 
-        const finalData = inventories.map(inv => {
-            console.log(`🧾 Preparing final data for challan ${inv.challanNo}`);
-            return {
-                challanNo: inv.challanNo,
-                challanDate: inv.challanDate,
-                jobworkers: Object.values(groupedAssignments[inv._id] || {})
-            };
-        });
+        // 3. Convert the grouped object into an array for the final response
+        const finalData = Object.values(groupedByJobWorker);
+        console.log(`✅ Grouped assignments by ${finalData.length} job workers.`);
 
-        console.log("🎉 Final response prepared. Count:", finalData.length);
+        res.set('Cache-Control', 'no-store');
 
-        // 👇 Full expanded log of the response
-        console.dir(finalData, { depth: null });
-
-        res.json({
+        res.status(200).json({
             success: true,
             count: finalData.length,
             data: finalData
         });
 
     } catch (err) {
-        console.error("🔥 Error fetching inventories:", err);
-        res.status(500).json({
-            success: false,
-            message: "Error fetching inventories",
-            error: err.message
-        });
+        console.log("🔥 Error fetching assignments by job worker:", err);
+        res.status(500).json({ success: false, message: "Server Error", error: err.message });
     }
 };
 
+// exports.receiveAssignmentReturn = async (req, res) => {
+//     // 📝 Get all three values from the request body. Default them to 0 if not provided.
+//     const { assignmentId, cleared = 0, shortage = 0, seconds = 0 } = req.body;
+
+//     const session = await mongoose.startSession();
+//     session.startTransaction();
+
+//     try {
+//         // 1. ✅ Basic Validation
+//         if (!assignmentId) {
+//             throw new Error("assignmentId is required.");
+//         }
+
+//         const totalToAccountFor = cleared + shortage + seconds;
+//         if (totalToAccountFor <= 0) {
+//             throw new Error("You must provide a quantity greater than zero for at least one field (cleared, shortage, or seconds).");
+//         }
+
+//         // 2. 🔢 Fetch the assignment and calculate remaining quantity
+//         const assignment = await WorkAssignment.findById(assignmentId).session(session);
+//         if (!assignment) {
+//             throw new Error("Work assignment not found.");
+//         }
+
+//         const alreadyAccountedFor = assignment.clearedQuantity + assignment.shortageQuantity + assignment.secondsQuantity;
+//         const remainingQuantity = assignment.quantity - alreadyAccountedFor;
+
+//         if (totalToAccountFor > remainingQuantity) {
+//             throw new Error(`Cannot process. You are trying to account for ${totalToAccountFor} items, but only ${remainingQuantity} are left in this assignment.`);
+//         }
+
+//         // 3. 💾 Update the quantities
+//         assignment.clearedQuantity += cleared;
+//         assignment.shortageQuantity += shortage;
+//         assignment.secondsQuantity += seconds;
+
+//         // const newTotalAccountedFor = assignment.clearedQuantity + assignment.shortageQuantity + assignment.secondsQuantity;
+
+//         // if (newTotalAccountedFor === assignment.quantity) {
+//         //     assignment.status = 'Cleared';
+//         // } else {
+//         //     assignment.status = 'InProgress';
+//         // }
+
+//         // 4. 🔄 Update the status automatically
+//         const newTotalAccountedFor = assignment.clearedQuantity + assignment.shortageQuantity + assignment.secondsQuantity;
+
+//         if (newTotalAccountedFor === assignment.quantity) {
+//             // This part will run
+//             assignment.status = 'Cleared';
+//         } else {
+//             assignment.status = 'InProgress';
+//         }
+
+//         const updatedAssignment = await assignment.save({ session });
+//         console.log(`✅ Assignment updated: ${updatedAssignment._id}, New Status: ${updatedAssignment.status}`);
+
+//         await session.commitTransaction();
+
+//         res.status(200).json({
+//             success: true,
+//             message: `Successfully processed return for assignment. Status is now ${updatedAssignment.status}.`,
+//             data: updatedAssignment
+//         });
+
+//     } catch (err) {
+//         await session.abortTransaction();
+//         console.error("🔥 Error in receiveAssignmentReturn:", err);
+//         // Send a 400 Bad Request for validation errors, 500 for others
+//         const statusCode = err.message.includes("Cannot process") || err.message.includes("required") ? 400 : 500;
+//         res.status(statusCode).json({ success: false, message: err.message });
+//     } finally {
+//         session.endSession();
+//     }
+// };
+
+exports.receiveAssignmentReturn = async (req, res) => {
+    const { assignmentId, cleared = 0, shortage = 0, seconds = 0 } = req.body;
+    console.log("🔄 [receiveAssignmentReturn] Incoming request body:", JSON.stringify(req.body, null, 2));
+
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+        if (!assignmentId) throw new Error("assignmentId is required.");
+
+        const totalToAccountFor = cleared + shortage + seconds;
+        if (totalToAccountFor <= 0) {
+            throw new Error("You must provide a quantity greater than zero.");
+        }
+
+        const assignment = await WorkAssignment.findById(assignmentId).session(session);
+        if (!assignment) throw new Error("Work assignment not found.");
+
+        // 📊 Before update log
+        console.log("📊 BEFORE UPDATE:", {
+            assignmentId: assignment._id.toString(),
+            totalStock: assignment.quantity,
+            cleared: assignment.clearedQuantity,
+            shortage: assignment.lostlQuantity,
+            seconds: assignment.damagedQuantity,
+        });
+
+        const alreadyAccountedFor =
+            assignment.clearedQuantity +
+            assignment.lostlQuantity +
+            assignment.damagedQuantity;
+
+        const remainingQuantity = assignment.quantity - alreadyAccountedFor;
+        console.log(`🔎 Remaining quantity before update: ${remainingQuantity}`);
+
+        if (totalToAccountFor > remainingQuantity) {
+            throw new Error(
+                `Cannot process. You are trying to account for ${totalToAccountFor} items, but only ${remainingQuantity} are left.`
+            );
+        }
+
+        // ✅ Correct field mappings
+        assignment.clearedQuantity += cleared;
+        assignment.lostlQuantity += shortage;
+        assignment.damagedQuantity += seconds;
+
+        const newTotalAccountedFor =
+            assignment.clearedQuantity +
+            assignment.lostlQuantity +
+            assignment.damagedQuantity;
+
+        assignment.status =
+            newTotalAccountedFor === assignment.quantity ? "Cleared" : "InProgress";
+
+        const updatedAssignment = await assignment.save({ session });
+
+        // 📊 After update log
+        console.log("📊 AFTER UPDATE:", {
+            assignmentId: updatedAssignment._id.toString(),
+            totalStock: updatedAssignment.quantity,
+            cleared: updatedAssignment.clearedQuantity,
+            shortage: updatedAssignment.lostlQuantity,
+            seconds: updatedAssignment.damagedQuantity,
+            remaining: updatedAssignment.quantity - newTotalAccountedFor,
+            status: updatedAssignment.status,
+        });
+
+        await session.commitTransaction();
+
+        console.log("✅ Final Saved Response:", updatedAssignment.toObject());
+
+        res.status(200).json({
+            success: true,
+            message: `Successfully processed return for assignment. Status is now ${updatedAssignment.status}.`,
+            data: updatedAssignment,
+        });
+    } catch (err) {
+        await session.abortTransaction();
+        console.error("🔥 Error in receiveAssignmentReturn:", err);
+        const statusCode =
+            err.message.includes("Cannot process") || err.message.includes("required")
+                ? 400
+                : 500;
+        res.status(statusCode).json({ success: false, message: err.message });
+    } finally {
+        session.endSession();
+    }
+};

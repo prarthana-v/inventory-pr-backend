@@ -11,5 +11,7 @@ router.use('/jobworker', require('./jobworkerRoute'));
 router.use('/inventory', require('./inventoryRoute'));
 router.use('/salesorder', require('./salesOrderRoute'));
 router.use('/plans', require('./planRoute'));
+router.use('/items', require('./additionalItemRoute'));
+router.use("/reports", require("./reportRoute"));
 
 module.exports = router;

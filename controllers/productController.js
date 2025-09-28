@@ -147,7 +147,7 @@ exports.getAllClearedProducts = async (req, res) => {
                 path: "productId",
                 populate: {
                     path: "categoryId", // also populate category inside product
-                    select: "name"
+                    select: "name image"
                 }
             })
             .lean();
@@ -173,3 +173,69 @@ exports.getAllClearedProducts = async (req, res) => {
     }
 };
 
+exports.getProductDetailsReport = async (req, res) => {
+    try {
+        console.log("📊 Generating detailed product report...");
+
+        const productReport = await WorkAssignment.aggregate([
+            // Stage 1: Group all assignments by their product ID and sum up the quantities.
+            {
+                $group: {
+                    _id: "$productId", // Group by the product ID
+
+                    totalAssignedStock: { $sum: "$quantity" },
+                    clearedStock: { $sum: "$clearedQuantity" },
+                    lostStock: { $sum: "$shortageQuantity" },
+                    damagedStock: { $sum: "$secondsQuantity" }
+                }
+            },
+
+            // Stage 2: Join with the 'products' collection to get product details like name and available stock.
+            {
+                $lookup: {
+                    from: "products", // The collection to join with
+                    localField: "_id", // The field from the input documents (the grouped assignments)
+                    foreignField: "_id", // The field from the documents of the "from" collection
+                    as: "productInfo" // The name of the new array field to add
+                }
+            },
+
+            // Stage 3: The $lookup stage creates an array. We use $unwind to deconstruct it.
+            {
+                $unwind: "$productInfo"
+            },
+
+            // Stage 4: Project the final shape of our data to match what you need.
+            {
+                $project: {
+                    _id: 0, // Exclude the default _id field
+                    productId: "$_id",
+                    productTitle: "$productInfo.title",
+                    productImage: "$productInfo.image", // Assuming you have an 'image' field
+                    totalAvailableStock: "$productInfo.totalAvailableStock",
+                    totalAssignedStock: "$totalAssignedStock",
+                    clearedStock: "$clearedStock",
+                    lostStock: "$lostStock",
+                    damagedStock: "$damagedStock"
+                }
+            },
+
+            // Optional Stage 5: Sort the results alphabetically by product title.
+            {
+                $sort: {
+                    productTitle: 1
+                }
+            }
+        ]);
+
+        res.status(200).json({
+            success: true,
+            message: "Product details report generated successfully.",
+            data: productReport
+        });
+
+    } catch (err) {
+        console.error("🔥 Error generating product report:", err);
+        res.status(500).json({ success: false, message: "Server Error", error: err.message });
+    }
+};

@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { createProduct, getAllProducts, getProductById, updateProduct, deleteProduct, getAllClearedProducts } = require('../controllers/productController');
+const { createProduct, getAllProducts, getProductById, updateProduct, deleteProduct, getAllClearedProducts, getProductDetailsReport } = require('../controllers/productController');
 const upload = require('../middleware/upload');
 
 router.post("/create-product", upload.single('image'), createProduct);

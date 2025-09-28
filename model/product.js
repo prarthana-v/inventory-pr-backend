@@ -26,7 +26,8 @@ const ProductSchema = new mongoose.Schema({
     },
     image: {
         type: String,
-    }
+    },
+    totalAvailableStock: { type: Number, default: 0, required: true }
 }, {
     timestamps: true
 });
