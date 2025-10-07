@@ -82,15 +82,29 @@ exports.deleteCategory = async (req, res) => {
             return res.status(400).json({ msg: 'categoryId is required.' });
         }
 
-        const deleted = await Category.findByIdAndDelete(categoryId);
+        const category = await Category.findOneAndUpdate(
+            { _id: categoryId, isDeleted: false },
+            {
+                $set: {
+                    isDeleted: true,
+                    deletedAt: new Date()
+                }
+            },
+            { new: true }
+        );
 
-        if (!deleted) {
-            console.warn(`⚠️ Category not found: ${categoryId} for understand proccess`);
-            return res.status(404).json({ msg: 'Category not found.' });
+
+
+        if (!category) {
+            console.warn(`⚠️ Category not found or already deleted: ${categoryId}`);
+            return res.status(404).json({ msg: 'Category not found or already deleted.' });
         }
 
         console.log(`🗑️ Category deleted: ${categoryId} for understand proccess`);
-        return res.status(200).json({ msg: 'Category deleted successfully.' });
+        return res.status(200).json({
+            msg: 'Category soft deleted successfully.',
+            category
+        });
 
     } catch (err) {
         console.error('❌ Error deleting category: ', err.message, ' for understand proccess');
@@ -102,7 +116,7 @@ exports.deleteCategory = async (req, res) => {
 exports.getAllCategories = async (req, res) => {
     try {
         console.log('================ Starting getAllCategories for understand proccess');
-        const categories = await Category.find();
+        const categories = await Category.find({ isDeleted: false });
 
         console.log(`📦 ${categories.length} categories fetched for understand proccess`);
         return res.status(200).json({ categories });

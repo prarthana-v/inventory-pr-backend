@@ -37,10 +37,14 @@ exports.createProduct = async (req, res) => {
 exports.getAllProducts = async (req, res) => {
     try {
         const filters = { ...req.query };
-        // console.log("[GET ALL] Filters:", filters);
-        const products = await Product.find()
-            .populate("categoryId", "name")
-        console.log(`[GET ALL] Found ${products.length} products`);
+        console.log("[GET ALL] Fetching non-deleted products with filters:", filters);
+
+        // 🔥 Fetch only non-deleted products
+        const products = await Product.find({ isDeleted: false })
+            .populate("categoryId", "name");
+
+        console.log(`[GET ALL] Found ${products.length} active products`);
+
         res.json(products);
     } catch (err) {
         console.error("[GET ALL] Error:", err.message);
@@ -118,16 +122,25 @@ exports.deleteProduct = async (req, res) => {
 
         console.log(`🗑️ Deleting product: ${productId}`);
 
-        const deletedProduct = await Product.findByIdAndDelete(productId);
+        const deletedProduct = await Product.findOneAndUpdate(
+            { _id: productId, isDeleted: false },
+            {
+                $set: {
+                    isDeleted: true,
+                    deletedAt: new Date()
+                }
+            },
+            { new: true }
+        );
 
         if (!deletedProduct) {
-            console.warn(`⚠️ Product not found: ${productId}`);
-            return res.status(404).json({ error: "Product not found." });
+            console.warn(`⚠️ Product not found or already deleted: ${productId}`);
+            return res.status(404).json({ error: "Product not found or already deleted." });
         }
 
         console.log(`✅ Product deleted: ${deletedProduct._id}`);
         return res.status(200).json({
-            message: "Product deleted successfully.",
+            message: "Product soft deleted successfully.",
             product: {
                 id: deletedProduct._id,
                 title: deletedProduct.title
