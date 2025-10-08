@@ -40,8 +40,10 @@ exports.getAllProducts = async (req, res) => {
         console.log("[GET ALL] Fetching non-deleted products with filters:", filters);
 
         // 🔥 Fetch only non-deleted products
-        const products = await Product.find({ isDeleted: false })
-            .populate("categoryId", "name");
+        const products = await Product.find({
+            isDeleted: false,
+            type: { $ne: 'additional item' },
+        }).populate("categoryId", "name");
 
         console.log(`[GET ALL] Found ${products.length} active products`);
 
