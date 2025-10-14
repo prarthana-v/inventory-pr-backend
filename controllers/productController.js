@@ -42,7 +42,6 @@ exports.getAllProducts = async (req, res) => {
         // 🔥 Fetch only non-deleted products
         const products = await Product.find({
             isDeleted: false,
-            type: { $ne: 'additional item' },
         }).populate("categoryId", "name");
 
         console.log(`[GET ALL] Found ${products.length} active products`);

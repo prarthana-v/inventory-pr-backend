@@ -545,7 +545,7 @@ exports.getAssignmentsByJobWorker = async (req, res) => {
                 path: 'assignments',
                 populate: {
                     path: 'productId',
-                    select: 'title sku' // Select only the product fields you need
+                    select: 'title sku image' // Select only the product fields you need
                 }
             })
             .sort({ challanDate: -1 }) // Show most recent challans first

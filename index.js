@@ -13,7 +13,7 @@ const app = express();
 // Middlewares
 app.use(express.json()); // ✅ needed to parse JSON body
 app.use(express.urlencoded({ extended: true })); // for form-data
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use("/uploads", cors(), express.static(path.join(__dirname, "uploads")));
 
 app.use(cors());
 
