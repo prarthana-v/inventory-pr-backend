@@ -189,67 +189,62 @@ exports.getAllClearedProducts = async (req, res) => {
 
 exports.getProductDetailsReport = async (req, res) => {
     try {
-        console.log("📊 Generating detailed product report...");
+        console.log("📊 Generating detailed product report (including unassigned)...");
 
-        const productReport = await WorkAssignment.aggregate([
-            // Stage 1: Group all assignments by their product ID and sum up the quantities.
-            {
-                $group: {
-                    _id: "$productId", // Group by the product ID
-
-                    totalAssignedStock: { $sum: "$quantity" },
-                    clearedStock: { $sum: "$clearedQuantity" },
-                    lostStock: { $sum: "$shortageQuantity" },
-                    damagedStock: { $sum: "$secondsQuantity" }
-                }
-            },
-
-            // Stage 2: Join with the 'products' collection to get product details like name and available stock.
+        const productReport = await Product.aggregate([
+            // Stage 1: Lookup assignments for each product
             {
                 $lookup: {
-                    from: "products", // The collection to join with
-                    localField: "_id", // The field from the input documents (the grouped assignments)
-                    foreignField: "_id", // The field from the documents of the "from" collection
-                    as: "productInfo" // The name of the new array field to add
+                    from: "workassignments", // Collection name for assignments
+                    localField: "_id",       // Product _id
+                    foreignField: "productId", // Field in WorkAssignment
+                    as: "assignments"
                 }
             },
 
-            // Stage 3: The $lookup stage creates an array. We use $unwind to deconstruct it.
+            // Stage 2: Add calculated totals (handle products with no assignments)
             {
-                $unwind: "$productInfo"
+                $addFields: {
+                    totalAssignedStock: { $sum: "$assignments.quantity" },
+                    clearedStock: { $sum: "$assignments.clearedQuantity" },
+                    lostStock: { $sum: "$assignments.lostlQuantity" },
+                    damagedStock: { $sum: "$assignments.damagedQuantity" }
+                }
             },
 
-            // Stage 4: Project the final shape of our data to match what you need.
+            // Stage 3: Project the final output
             {
                 $project: {
-                    _id: 0, // Exclude the default _id field
+                    _id: 0,
                     productId: "$_id",
-                    productTitle: "$productInfo.title",
-                    productImage: "$productInfo.image", // Assuming you have an 'image' field
-                    totalAvailableStock: "$productInfo.totalAvailableStock",
-                    totalAssignedStock: "$totalAssignedStock",
-                    clearedStock: "$clearedStock",
-                    lostStock: "$lostStock",
-                    damagedStock: "$damagedStock"
+                    productTitle: "$title",
+                    productImage: "$image",
+                    totalAvailableStock: "$totalAvailableStock",
+                    totalAssignedStock: { $ifNull: ["$totalAssignedStock", 0] },
+                    clearedStock: { $ifNull: ["$clearedStock", 0] },
+                    lostStock: { $ifNull: ["$lostStock", 0] },
+                    damagedStock: { $ifNull: ["$damagedStock", 0] }
                 }
             },
 
-            // Optional Stage 5: Sort the results alphabetically by product title.
+            // Stage 4: Sort alphabetically
             {
-                $sort: {
-                    productTitle: 1
-                }
+                $sort: { productTitle: 1 }
             }
         ]);
 
         res.status(200).json({
             success: true,
-            message: "Product details report generated successfully.",
+            message: "✅ Product details report generated successfully.",
             data: productReport
         });
 
     } catch (err) {
         console.error("🔥 Error generating product report:", err);
-        res.status(500).json({ success: false, message: "Server Error", error: err.message });
+        res.status(500).json({
+            success: false,
+            message: "Server Error",
+            error: err.message
+        });
     }
 };
