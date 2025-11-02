@@ -138,6 +138,7 @@ exports.loginJobworker = async (req, res) => {
         console.log('🔍 Attempting to log in job worker:', email);
 
         if (!email || !password) {
+            console.log("Email and password are there")
             return res.status(400).json({ message: 'Email and password are required.' });
         }
 
@@ -430,7 +431,11 @@ exports.getJobWorkerDashboard = async (req, res) => {
                 quantityCleared: assignment.clearedQuantity,
                 shortage: assignment.lostlQuantity,
                 seconds: assignment.damagedQuantity,
-                assignedAt: assignment.createdAt
+                assignedAt: assignment.createdAt,
+                pendingCleared: (assignment.pendingClearedQuantity || 0),
+                pendingShortage: (assignment.pendingLostlQuantity || 0),
+                pendingSeconds: (assignment.pendingDamagedQuantity || 0),
+                activeReturnRequestId: assignment.activeReturnRequestId
             });
         }
 

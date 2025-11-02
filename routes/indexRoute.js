@@ -13,5 +13,6 @@ router.use('/salesorder', require('./salesOrderRoute'));
 router.use('/plans', require('./planRoute'));
 router.use('/items', require('./additionalItemRoute'));
 router.use("/reports", require("./reportRoute"));
+router.use("/return-requests", require("./inventoryRoute"))
 
 module.exports = router;

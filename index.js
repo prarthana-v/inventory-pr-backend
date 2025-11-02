@@ -10,21 +10,33 @@ dotenv.config();
 connectDB();
 
 const app = express();
-// Middlewares
-app.use(express.json()); // ✅ needed to parse JSON body
-app.use(express.urlencoded({ extended: true })); // for form-data
-app.use("/uploads", cors(), express.static(path.join(__dirname, "uploads")));
 
-app.use(cors());
+// const allowedOrigins = [
+//   'https://inventory.reliablesolution.in',
+//   'http://localhost:3000' // for local testing
+// ];
+
+// Middleware
+app.use(express.json()); // ✅ must come BEFORE routes
+app.use(express.urlencoded({ extended: true }));
+app.use("/uploads", cors(), express.static(path.join(__dirname, "uploads")));
 
 // Test route
 app.get("/", (req, res) => {
   res.send("Inventory Backend is Live 🚀");
 });
 
-// Routes
-app.use('/api/', require('./routes/indexRoute'))
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true
+}));
 
+
+// Routes
+app.use('/api/', require('./routes/indexRoute'));
+
+// Cache control
 app.use((req, res, next) => {
   res.set('Cache-Control', 'no-store');
   next();
