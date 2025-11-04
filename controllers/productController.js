@@ -73,13 +73,25 @@ exports.getProductById = async (req, res) => {
 };
 
 // Updates a product by its ID with new data
+// In productController.js
+
 exports.updateProduct = async (req, res) => {
     try {
+        // req.body will now be correctly populated!
+        console.log(req.body, req.params, 'req body-update------------------');
+
+        // This part is still correct
         const { productId, ...updates } = req.body;
 
         if (!productId) {
             console.warn("⚠️ productId missing in request body.");
             return res.status(400).json({ error: "productId is required." });
+        }
+
+        // ✨ NEW: Check if a new file was uploaded by multer
+        if (req.file) {
+            console.log("📄 [UPDATE] New file received:", req.file.filename);
+            updates.image = req.file.filename; // Add new image to the updates
         }
 
         // Remove undefined/null keys so they don't overwrite existing fields
@@ -91,7 +103,7 @@ exports.updateProduct = async (req, res) => {
 
         const updatedProduct = await Product.findByIdAndUpdate(
             productId,
-            { $set: updates },
+            { $set: updates }, // $set will apply all fields in the 'updates' object
             { new: true, runValidators: true }
         );
 
