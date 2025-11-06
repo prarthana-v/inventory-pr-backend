@@ -1,7 +1,8 @@
 const SaleOrder = require('../model/saleOrder');
 const Inventory = require('../model/inventory')
 const WorkAssignment = require('../model/WorkAssignment')
-const mongoose = require('mongoose')
+const Product = require('../model/product');
+const mongoose = require('mongoose');
 
 exports.createSaleOrder = async (req, res) => {
     const session = await mongoose.startSession();
@@ -22,47 +23,55 @@ exports.createSaleOrder = async (req, res) => {
             product: p.productId,
             quantity: p.quantity,
             price: p.price,
-            discount: p.discount
+            discount: p.discount || 0
         }));
 
-        // ✅ Validate and deduct stock
+        // ✅ Validate cleared stock and update global product stock
         for (const item of products) {
             const clearedAssignments = await WorkAssignment.find({
                 productId: item.productId,
                 status: "Cleared"
-            }).populate("InventoryId").session(session);
+            }).session(session);
 
-            if (!clearedAssignments || clearedAssignments.length === 0) {
-                throw new Error(`No cleared stock available for product ${item.productId}`);
+            if (!clearedAssignments.length) {
+                throw new Error(`No cleared stock found for product ${item.productId}`);
             }
 
+            // Calculate total cleared quantity available
             const totalCleared = clearedAssignments.reduce((sum, wa) => sum + wa.quantity, 0);
 
             if (totalCleared < item.quantity) {
-                throw new Error(`Not enough cleared stock for product ${item.productId}. Available: ${totalCleared}, Required: ${item.quantity}`);
+                throw new Error(
+                    `Not enough cleared stock for product ${item.productId}. Available: ${totalCleared}, Required: ${item.quantity}`
+                );
             }
 
-            let remainingToDeduct = item.quantity;
-
+            // ✅ Deduct quantity from the cleared assignments sequentially
+            let remaining = item.quantity;
             for (const wa of clearedAssignments) {
-                const inventory = await Inventory.findById(wa.InventoryId._id).session(session);
-                if (!inventory) continue;
+                const deduct = Math.min(wa.quantity, remaining);
+                wa.quantity -= deduct;
+                remaining -= deduct;
 
-                const invProduct = inventory.products.find(p => p.product.toString() === item.productId);
-                if (!invProduct) continue;
+                // If all required quantity deducted, stop
+                if (remaining <= 0) break;
 
-                const deductQty = Math.min(invProduct.availableStock, remainingToDeduct);
-                if (deductQty > 0) {
-                    invProduct.availableStock -= deductQty;
-                    remainingToDeduct -= deductQty;
-                    await inventory.save({ session });
-                }
-
-                if (remainingToDeduct <= 0) break;
+                await wa.save({ session });
             }
+
+            // ✅ Update product’s totalAvailableStock
+            const product = await Product.findById(item.productId).session(session);
+            if (!product) throw new Error(`Product not found: ${item.productId}`);
+
+            if (product.totalAvailableStock < item.quantity) {
+                throw new Error(`Insufficient available stock for ${product.title}`);
+            }
+
+            product.totalAvailableStock -= item.quantity;
+            await product.save({ session });
         }
 
-        // ✅ Create SalesOrder
+        // ✅ Create Sale Order
         const saleOrder = new SaleOrder({
             products: formattedProducts,
             vendor,
@@ -81,23 +90,23 @@ exports.createSaleOrder = async (req, res) => {
 
         res.status(201).json({
             success: true,
-            message: "Sales Order created successfully (via cleared WorkAssignments).",
+            message: "Sale Order created successfully from cleared stock.",
             data: saleOrder
         });
-
     } catch (err) {
         // ❌ Rollback changes
         await session.abortTransaction();
         session.endSession();
 
-        console.error("🔥 Error creating sales order v2:", err);
+        console.error("🔥 Error creating sale order:", err.message);
         res.status(500).json({
             success: false,
-            message: "Server error while creating Sales Order.",
+            message: "Server error while creating Sale Order.",
             error: err.message
         });
     }
 };
+
 
 // ✅ Get all Sales Orders
 exports.getSalesOrders = async (req, res) => {

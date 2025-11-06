@@ -7,9 +7,9 @@ router.post('/register', registerUser);
 router.post('/login', loginUser);
 router.get('/getuser', getUserByEmail);
 router.get('/getalladmins', getAllAdmins);
-router.get("/all-users", getAllUsers)
+router.get("/all-users", getAllUsers);
 router.delete('/delete-user', deleteUserById);
-router.get('/get-counts', getCounts)
-router.post("/assign-plan/:id", assignPlan)
+router.get('/get-counts', getCounts);
+router.post("/assign-plan/:id", assignPlan);
 
 module.exports = router;

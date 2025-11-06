@@ -1,5 +1,5 @@
 const express = require('express');
-const { createInventory, updateInventory, getInventoryById, getInventories, deleteInventory, getAssignments, assignToWorkers, getProductStockSummary, getAssignmentsByJobWorker, getInventoryHistory } = require('../controllers/inventoryController');
+const { createInventory, updateInventory, getInventoryById, getInventories, deleteInventory, getAssignments, assignToWorkers, getProductStockSummary, getAssignmentsByJobWorker, getInventoryHistory, receiveAssignmentReturn } = require('../controllers/inventoryController');
 const { submitReturnRequest, reviewReturnRequest, directReturnProcess, getPendingReturnRequests, getMyReturnRequests } = require('../controllers/returnController');
 const router = express.Router();
 
@@ -13,8 +13,6 @@ router.post('/get-assignments', getAssignments);
 router.get('/get-assigned-products', getAssignmentsByJobWorker);
 router.get("/stock-summary", getProductStockSummary);
 router.get('/history', getInventoryHistory);
-
-// router.put('/receive-assignment-return', receiveAssignmentReturn);
 
 // 1. For a Jobworker/Admin to SUBMIT a request for approval
 // (Assuming you have auth middleware to get req.user.id)
@@ -34,5 +32,7 @@ router.get('/pending', getPendingReturnRequests);
 
 // to get jobworker's return-returns in jobworker panel
 router.get('/my-requests', getMyReturnRequests);
+
+router.put('/receive-assignment-return', receiveAssignmentReturn);
 
 module.exports = router;

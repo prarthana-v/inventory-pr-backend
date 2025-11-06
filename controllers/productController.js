@@ -133,8 +133,27 @@ exports.deleteProduct = async (req, res) => {
             return res.status(400).json({ error: "productId is required." });
         }
 
-        console.log(`🗑️ Deleting product: ${productId}`);
+        console.log(`🗑️ Attempting to delete product: ${productId}`);
 
+        // 1️⃣ Check if product is used in any WorkAssignment
+        const assigned = await WorkAssignment.exists({ productId });
+        if (assigned) {
+            console.warn(`🚫 Product ${productId} is linked to a WorkAssignment.`);
+            return res.status(400).json({
+                error: "This product is linked with a work assignment and cannot be deleted."
+            });
+        }
+
+        // 2️⃣ Check if product exists in any Inventory
+        const inInventory = await Inventory.exists({ "products.product": productId });
+        if (inInventory) {
+            console.warn(`🚫 Product ${productId} is linked to an Inventory.`);
+            return res.status(400).json({
+                error: "This product is associated with an inventory record and cannot be deleted."
+            });
+        }
+
+        // 3️⃣ Proceed with soft delete
         const deletedProduct = await Product.findOneAndUpdate(
             { _id: productId, isDeleted: false },
             {
@@ -151,7 +170,8 @@ exports.deleteProduct = async (req, res) => {
             return res.status(404).json({ error: "Product not found or already deleted." });
         }
 
-        console.log(`✅ Product deleted: ${deletedProduct._id}`);
+        console.log(`✅ Product soft deleted: ${deletedProduct._id}`);
+
         return res.status(200).json({
             message: "Product soft deleted successfully.",
             product: {
@@ -166,6 +186,7 @@ exports.deleteProduct = async (req, res) => {
     }
 };
 
+
 exports.getAllClearedProducts = async (req, res) => {
     try {
         const clearedProducts = await WorkAssignment.find({ status: "Cleared" })
@@ -177,6 +198,17 @@ exports.getAllClearedProducts = async (req, res) => {
                 }
             })
             .lean();
+
+        console.log("✅ Total cleared products fetched:", clearedProducts.length);
+
+        // Log how many have missing productId
+        const missingProducts = clearedProducts.filter(item => !item.productId);
+        if (missingProducts.length > 0) {
+            console.warn("⚠️ WorkAssignments with missing productId:", missingProducts.map(m => m._id));
+        }
+
+        // Log a few samples for debugging
+        console.log("🧩 Sample populated data (first 2):", clearedProducts.slice(0, 2));
 
         return res.status(200).json({
             success: true,

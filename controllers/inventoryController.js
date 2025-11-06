@@ -596,97 +596,94 @@ exports.getAssignmentsByJobWorker = async (req, res) => {
     }
 };
 
-// exports.receiveAssignmentReturn = async (req, res) => {
-//     const { assignmentId, cleared = 0, shortage = 0, seconds = 0 } = req.body;
-//     console.log("🔄 [receiveAssignmentReturn] Incoming request body:", JSON.stringify(req.body, null, 2));
+exports.receiveAssignmentReturn = async (req, res) => {
+    const { assignmentId, cleared = 0, shortage = 0, seconds = 0 } = req.body;
+    console.log("🔄 [receiveAssignmentReturn] Incoming request body:", JSON.stringify(req.body, null, 2));
 
-//     const session = await mongoose.startSession();
-//     session.startTransaction();
+    const session = await mongoose.startSession();
+    session.startTransaction();
 
-//     try {
-//         if (!assignmentId) throw new Error("assignmentId is required.");
+    try {
+        if (!assignmentId) throw new Error("assignmentId is required.");
 
-//         const totalToAccountFor = cleared + shortage + seconds;
-//         if (totalToAccountFor <= 0) {
-//             throw new Error("You must provide a quantity greater than zero.");
-//         }
+        const totalToAccountFor = cleared + shortage + seconds;
+        if (totalToAccountFor <= 0) {
+            throw new Error("You must provide a quantity greater than zero.");
+        }
 
-//         const assignment = await WorkAssignment.findById(assignmentId).session(session);
-//         if (!assignment) throw new Error("Work assignment not found.");
+        const assignment = await WorkAssignment.findById(assignmentId).session(session);
+        if (!assignment) throw new Error("Work assignment not found.");
 
-//         // 📊 Before update log
-//         console.log("📊 BEFORE UPDATE:", {
-//             assignmentId: assignment._id.toString(),
-//             totalStock: assignment.quantity,
-//             cleared: assignment.clearedQuantity,
-//             shortage: assignment.lostlQuantity,
-//             seconds: assignment.damagedQuantity,
-//         });
+        // 📊 Before update log
+        console.log("📊 BEFORE UPDATE:", {
+            assignmentId: assignment._id.toString(),
+            totalStock: assignment.quantity,
+            cleared: assignment.clearedQuantity,
+            shortage: assignment.lostlQuantity,
+            seconds: assignment.damagedQuantity,
+        });
 
-//         const alreadyAccountedFor =
-//             assignment.clearedQuantity +
-//             assignment.lostlQuantity +
-//             assignment.damagedQuantity;
+        const alreadyAccountedFor =
+            assignment.clearedQuantity +
+            assignment.lostlQuantity +
+            assignment.damagedQuantity;
 
-//         const remainingQuantity = assignment.quantity - alreadyAccountedFor;
-//         console.log(`🔎 Remaining quantity before update: ${remainingQuantity}`);
+        const remainingQuantity = assignment.quantity - alreadyAccountedFor;
+        console.log(`🔎 Remaining quantity before update: ${remainingQuantity}`);
 
-//         if (totalToAccountFor > remainingQuantity) {
-//             throw new Error(
-//                 `Cannot process. You are trying to account for ${totalToAccountFor} items, but only ${remainingQuantity} are left.`
-//             );
-//         }
+        if (totalToAccountFor > remainingQuantity) {
+            throw new Error(
+                `Cannot process. You are trying to account for ${totalToAccountFor} items, but only ${remainingQuantity} are left.`
+            );
+        }
 
-//         // ✅ Correct field mappings
-//         assignment.clearedQuantity += cleared;
-//         assignment.lostlQuantity += shortage;
-//         assignment.damagedQuantity += seconds;
+        // ✅ Correct field mappings
+        assignment.clearedQuantity += cleared;
+        assignment.lostlQuantity += shortage;
+        assignment.damagedQuantity += seconds;
 
-//         const newTotalAccountedFor =
-//             assignment.clearedQuantity +
-//             assignment.lostlQuantity +
-//             assignment.damagedQuantity;
+        const newTotalAccountedFor =
+            assignment.clearedQuantity +
+            assignment.lostlQuantity +
+            assignment.damagedQuantity;
 
-//         assignment.status =
-//             newTotalAccountedFor === assignment.quantity ? "Cleared" : "InProgress";
+        assignment.status =
+            newTotalAccountedFor === assignment.quantity ? "Cleared" : "InProgress";
 
-//         const updatedAssignment = await assignment.save({ session });
+        const updatedAssignment = await assignment.save({ session });
 
-//         // 📊 After update log
-//         console.log("📊 AFTER UPDATE:", {
-//             assignmentId: updatedAssignment._id.toString(),
-//             totalStock: updatedAssignment.quantity,
-//             cleared: updatedAssignment.clearedQuantity,
-//             shortage: updatedAssignment.lostlQuantity,
-//             seconds: updatedAssignment.damagedQuantity,
-//             remaining: updatedAssignment.quantity - newTotalAccountedFor,
-//             status: updatedAssignment.status,
-//         });
+        // 📊 After update log
+        console.log("📊 AFTER UPDATE:", {
+            assignmentId: updatedAssignment._id.toString(),
+            totalStock: updatedAssignment.quantity,
+            cleared: updatedAssignment.clearedQuantity,
+            shortage: updatedAssignment.lostlQuantity,
+            seconds: updatedAssignment.damagedQuantity,
+            remaining: updatedAssignment.quantity - newTotalAccountedFor,
+            status: updatedAssignment.status,
+        });
 
-//         await session.commitTransaction();
+        await session.commitTransaction();
 
-//         console.log("✅ Final Saved Response:", updatedAssignment.toObject());
+        console.log("✅ Final Saved Response:", updatedAssignment.toObject());
 
-//         res.status(200).json({
-//             success: true,
-//             message: `Successfully processed return for assignment. Status is now ${updatedAssignment.status}.`,
-//             data: updatedAssignment,
-//         });
-//     } catch (err) {
-//         await session.abortTransaction();
-//         console.error("🔥 Error in receiveAssignmentReturn:", err);
-//         const statusCode =
-//             err.message.includes("Cannot process") || err.message.includes("required")
-//                 ? 400
-//                 : 500;
-//         res.status(statusCode).json({ success: false, message: err.message });
-//     } finally {
-//         session.endSession();
-//     }
-// };
-
-
-// ... (your other controller functions)
+        res.status(200).json({
+            success: true,
+            message: `Successfully processed return for assignment. Status is now ${updatedAssignment.status}.`,
+            data: updatedAssignment,
+        });
+    } catch (err) {
+        await session.abortTransaction();
+        console.error("🔥 Error in receiveAssignmentReturn:", err);
+        const statusCode =
+            err.message.includes("Cannot process") || err.message.includes("required")
+                ? 400
+                : 500;
+        res.status(statusCode).json({ success: false, message: err.message });
+    } finally {
+        session.endSession();
+    }
+};
 
 /**
  * @desc    Get the inventory history (audit log) for a single product

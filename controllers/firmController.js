@@ -208,15 +208,29 @@ exports.deleteFirm = async (req, res) => {
     }
 
     try {
-        const deletedFirm = await Firm.findByIdAndDelete(firmId);
-
-        if (!deletedFirm) {
+        // 1️⃣ Check if firm exists
+        const firm = await Firm.findById(firmId).populate("admins", "name email");
+        if (!firm) {
             console.warn(`⚠️ Firm not found for delete: ${firmId}`);
             return res.status(404).json({ success: false, message: 'Firm not found.' });
         }
 
-        console.log(`🗑️ Firm deleted: ${firmId}`);
+        // 2️⃣ Check if firm is assigned to any user (admins array not empty)
+        if (firm.admins && firm.admins.length > 0) {
+            console.warn(`🚫 Firm ${firmId} cannot be deleted — assigned to users:`, firm.admins.map(a => a._id));
+            return res.status(400).json({
+                success: false,
+                message: 'This firm is assigned to one or more users and cannot be deleted.',
+                assignedUsers: firm.admins.map(a => ({ id: a._id, name: a.name, email: a.email }))
+            });
+        }
+
+        // 3️⃣ Proceed with deletion if not assigned to anyone
+        await Firm.findByIdAndDelete(firmId);
+
+        console.log(`✅ Firm deleted successfully: ${firmId}`);
         res.status(200).json({ success: true, message: 'Firm deleted successfully.' });
+
     } catch (err) {
         console.error('❌ Error deleting firm:', err);
         res.status(500).json({ success: false, message: 'Something went wrong.' });
