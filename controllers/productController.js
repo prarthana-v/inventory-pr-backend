@@ -1,5 +1,6 @@
 const Product = require("../model/product");
-const WorkAssignment = require("../model/WorkAssignment")
+const WorkAssignment = require("../model/WorkAssignment");
+const Inventory = require('../model/inventory');
 
 // Creates a new product using request body data
 exports.createProduct = async (req, res) => {
@@ -72,7 +73,6 @@ exports.getProductById = async (req, res) => {
     }
 };
 
-// Updates a product by its ID with new data
 // In productController.js
 
 exports.updateProduct = async (req, res) => {

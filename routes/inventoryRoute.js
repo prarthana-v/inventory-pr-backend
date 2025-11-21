@@ -1,6 +1,7 @@
 const express = require('express');
 const { createInventory, updateInventory, getInventoryById, getInventories, deleteInventory, getAssignments, assignToWorkers, getProductStockSummary, getAssignmentsByJobWorker, getInventoryHistory, receiveAssignmentReturn } = require('../controllers/inventoryController');
 const { submitReturnRequest, reviewReturnRequest, directReturnProcess, getPendingReturnRequests, getMyReturnRequests } = require('../controllers/returnController');
+const upload = require('../middleware/upload');
 const router = express.Router();
 
 router.post('/add-inventory', createInventory);
@@ -8,9 +9,18 @@ router.put('/update-inventory', updateInventory);
 router.get('/get-inventory', getInventoryById);
 router.post('/all-inventory', getInventories);
 router.delete('/delete-inventory', deleteInventory);
-router.post('/assign-stock', assignToWorkers);
+
+router.post(
+    '/assign-stock',
+    upload.any(),   // accept ANY file → simplest for dynamic index images
+    assignToWorkers
+);
+
 router.post('/get-assignments', getAssignments);
+
+//view challan api
 router.get('/get-assigned-products', getAssignmentsByJobWorker);
+
 router.get("/stock-summary", getProductStockSummary);
 router.get('/history', getInventoryHistory);
 

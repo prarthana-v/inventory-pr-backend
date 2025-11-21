@@ -2,6 +2,8 @@ const mongoose = require('mongoose');
 
 const WorkerAssignmentSchema = new mongoose.Schema({
     productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
+    image: { type: String },          // uploaded image file
+    description: { type: String },    // extra description for assigned product
     price: { type: Number },
     quantity: { type: Number, required: true },
     jobworker: { type: mongoose.Schema.Types.ObjectId, ref: 'JobWorker' },

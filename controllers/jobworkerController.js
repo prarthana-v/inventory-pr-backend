@@ -38,6 +38,7 @@ exports.createJobWorker = async (req, res) => {
 };
 
 exports.updateJobWorker = async (req, res) => {
+
     try {
         const { jobWorkerId, name, phone, email, password } = req.body;
 
@@ -56,9 +57,14 @@ exports.updateJobWorker = async (req, res) => {
         if (name !== undefined) worker.name = name;
         if (phone !== undefined) worker.phone = phone;
         if (email !== undefined) worker.email = email;
-        if (password !== undefined) {
-            worker.password = await bcrypt.hash(password, 10); // Hash the new password
+        if (password !== undefined && password !== null && password.trim() !== "") {
+            const hashedPassword = await bcrypt.hash(password, 10);
+            worker.password = hashedPassword;
+            console.log("🔒 Password updated successfully.");
+        } else {
+            console.log("ℹ️ No password provided → keeping existing password.");
         }
+
         if (req.file) worker.profileImage = `/uploads/${req.file.filename}`;
 
         await worker.save();
@@ -129,6 +135,32 @@ exports.getAllJobWorkers = async (req, res) => {
         });
     } catch (err) {
         res.status(500).json({ message: 'Server error', error: err.message });
+    }
+};
+
+exports.getDeletedJobWorkers = async (req, res) => {
+    try {
+        console.log('Fetching deleted job workers...');
+        const workers = await JobWorker.find({ isDeleted: true }).lean();
+
+        if (!workers || workers.length === 0) {
+            console.warn('No deleted job workers found.');
+            return res.status(200).json({
+                success: true,
+                message: 'No deleted job workers found.',
+                workers: []
+            });
+        }
+
+        console.log(`Fetched ${workers.length} deleted job workers.`);
+        return res.status(200).json({
+            success: true,
+            message: 'Deleted job workers fetched successfully.',
+            workers
+        });
+    } catch (err) {
+        console.error('Error fetching deleted job workers:', err.message);
+        return res.status(500).json({ success: false, message: 'Server error', error: err.message });
     }
 };
 
@@ -427,6 +459,9 @@ exports.getJobWorkerDashboard = async (req, res) => {
                 assignmentId: assignment._id,
                 product: assignment.productId,
                 status: assignment.status,
+                image: assignment.image,
+                price: assignment.price,
+                description: assignment.description,
                 quantityAssigned: assignment.quantity,
                 quantityCleared: assignment.clearedQuantity,
                 shortage: assignment.lostlQuantity,

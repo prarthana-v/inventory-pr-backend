@@ -11,10 +11,11 @@ connectDB();
 
 const app = express();
 
-// const allowedOrigins = [
-//   'https://inventory.reliablesolution.in',
-//   'http://localhost:3000' // for local testing
-// ];
+const allowedOrigins = [
+  'https://inventory.reliablesolution.in',
+  'http://localhost:5173', // for local testing
+  'http://localhost:3000' // for local testing
+];
 
 // Middleware
 app.use(express.json()); // ✅ must come BEFORE routes
@@ -26,11 +27,12 @@ app.get("/", (req, res) => {
   res.send("Inventory Backend is Live 🚀");
 });
 
-app.use(cors({
-  origin: "*",
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  credentials: true
-}));
+app.use(cors());
+// app.use(cors({
+//   origin: "*",
+//   methods: ["GET", "POST", "PUT", "DELETE"],
+//   credentials: true
+// }));
 
 
 // Routes
