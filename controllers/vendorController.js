@@ -1,74 +1,107 @@
 // vendor.controller.js
 const Vendor = require('../model/Vendor');
+const User = require('../model/auth');
 
-// 🧠 Create a new vendor
 exports.createVendor = async (req, res) => {
   try {
-    const { name, contactInfo, productList } = req.body;
+    const { name, contactInfo = {}, productList = [], userId } = req.body;
+    console.log('[CREATE VENDOR] body:', req.body);
 
-    // Validate required fields
-    if (!name) {
-      console.warn("⚠️ Missing required fields: name or firm");
-      return res.status(400).json({ error: 'Vendor name and firm are required.' });
+    if (!userId || !name) {
+      console.error('[CREATE VENDOR] Missing userId or name');
+      return res.status(400).json({ success: false, error: 'userId and name are required' });
     }
 
-    // Check for duplicate vendor name
-    const existingVendor = await Vendor.findOne({ name });
-    if (existingVendor) {
-      console.warn(`⚠️ Vendor already exists with name: ${name}`);
-      return res.status(400).json({ error: 'Vendor name already exists.' });
+    // fetch creator
+    const creator = await User.findById(userId);
+    if (!creator) {
+      console.error('[CREATE VENDOR] Creator not found:', userId);
+      return res.status(404).json({ success: false, error: 'Creator not found' });
     }
 
-    // Create new vendor doc
-    const newVendor = new Vendor({
-      name,
-      contactInfo: contactInfo || {},
-      productList: productList || [],
-    });
-
-    await newVendor.save();
-
-    console.log(`✅ Vendor created successfully: ${newVendor._id}`);
-    return res.status(201).json({
-      msg: 'Vendor created successfully.',
-      vendor: {
-        _id: newVendor._id,
-        name: newVendor.name,
-        // firm: newVendor.firm,
+    // determine owning superAdmin
+    let owningSuperAdminId;
+    if (creator.role === 'SuperAdmin') {
+      owningSuperAdminId = creator._id;
+    } else if (creator.role === 'Admin') {
+      if (!creator.managingSuperAdmin) {
+        console.error('[CREATE VENDOR] Admin has no managingSuperAdmin:', creator._id);
+        return res.status(400).json({ success: false, error: 'This admin has no managingSuperAdmin assigned' });
       }
+      owningSuperAdminId = creator.managingSuperAdmin;
+    } else {
+      console.error('[CREATE VENDOR] Role not allowed to create vendor:', creator.role);
+      return res.status(403).json({ success: false, error: 'Only Admin or SuperAdmin can create vendors' });
+    }
+
+    // prevent duplicate vendor name within the same superAdmin scope
+    const existing = await Vendor.findOne({ name, superAdmin: owningSuperAdminId, isDeleted: false });
+    if (existing) {
+      console.warn('[CREATE VENDOR] Duplicate vendor under same SuperAdmin:', name);
+      return res.status(409).json({ success: false, error: 'Vendor name already exists under this SuperAdmin' });
+    }
+
+    const vendor = await Vendor.create({
+      name,
+      contactInfo,
+      productList,
+      superAdmin: owningSuperAdminId, // owning superadmin (visibility scope)
+      createdBy: creator._id
     });
 
-  } catch (error) {
-    console.error('❌ Server error while creating vendor:', error.message);
-    return res.status(500).json({
-      error: 'Internal server error. Vendor not created.',
-      details: error.message,
-    });
+    console.log('[CREATE VENDOR] Created vendor:', vendor._id);
+    return res.status(201).json({ success: true, vendor });
+
+  } catch (err) {
+    console.error('[CREATE VENDOR] Error:', err);
+    return res.status(500).json({ success: false, error: 'Server error', details: err.message });
   }
 };
 
 
-// 📜 Get all vendors - 
 exports.getAllVendors = async (req, res) => {
-    console.log("=============== [getAllVendors] Function start ===============");
+  try {
+    const { userId } = req.body;
+    console.log('[GET VENDORS] userId:', userId);
 
-    try {
-        console.log("=============== Connecting to DB & fetching vendors ===============");
-        const vendors = await Vendor.find().populate('productList');
-        console.log(`=============== Successfully fetched ${vendors.length} vendors ===============`);
-
-        console.log("=============== Sending response to client ===============");
-        res.status(200).json(vendors);
-
-    } catch (error) {
-        console.error("=============== ERROR in getAllVendors ===============");
-        console.error(error); // full error stack
-        res.status(500).json({ error: 'Server error while fetching vendors' });
+    if (!userId) {
+      console.error('[GET VENDORS] Missing userId');
+      return res.status(400).json({ success: false, error: 'userId is required' });
     }
 
-    console.log("=============== [getAllVendors] Function end ===============");
-};
+    const user = await User.findById(userId).select('role managingSuperAdmin');
+    if (!user) {
+      console.error('[GET VENDORS] User not found:', userId);
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
 
+    let superAdminId;
+    if (user.role === 'SuperAdmin') {
+      superAdminId = user._id;
+    } else if (user.role === 'Admin') {
+      if (!user.managingSuperAdmin) {
+        console.error('[GET VENDORS] Admin has no managingSuperAdmin:', userId);
+        return res.status(400).json({ success: false, error: 'Admin has no managingSuperAdmin assigned' });
+      }
+      superAdminId = user.managingSuperAdmin;
+    } else {
+      console.error('[GET VENDORS] Role not allowed:', user.role);
+      return res.status(403).json({ success: false, error: 'Only Admin or SuperAdmin can view vendors' });
+    }
+
+    console.log('[GET VENDORS] superAdminId scope:', superAdminId);
+
+    const vendors = await Vendor.find({ superAdmin: superAdminId });
+    console.log(vendors,"vendors");
+
+    console.log(`[GET VENDORS] Found ${vendors.length} vendors for superAdmin ${superAdminId}`);
+    return res.status(200).json(vendors);
+
+  } catch (err) {
+    console.error('[GET VENDORS] Error:', err);
+    return res.status(500).json({ success: false, error: 'Server error', details: err.message });
+  }
+};
 
 // 🔍 Get a vendor by ID
 exports.getVendorById = async (req, res) => {

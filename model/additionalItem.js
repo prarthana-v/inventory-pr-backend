@@ -1,6 +1,15 @@
 const mongoose = require("mongoose");
 
 const AdditionalItemSchema = new mongoose.Schema({
+     superAdmin: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true
+    },
+    createdBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User"
+    },
     title: {
         type: String,
         required: true,
@@ -8,7 +17,7 @@ const AdditionalItemSchema = new mongoose.Schema({
     },
     description: {
         type: String,
-        trim: true
+        trim: true  
     },
     sku: {
         type: String,

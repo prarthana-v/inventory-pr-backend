@@ -5,7 +5,7 @@ const router = express.Router();
 
 // 👇 API Endpoints
 router.post('/create-jobworker', createJobWorker);
-router.get('/all-jobworkers', getAllJobWorkers);
+router.post('/all-jobworkers', getAllJobWorkers);
 router.put('/update-jobworker', updateJobWorker);
 router.delete('/delete-jobworker', deleteJobWorker);
 router.post('/login-jobworker', loginJobworker);

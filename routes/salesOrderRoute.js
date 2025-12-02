@@ -3,6 +3,6 @@ const { createSaleOrder, getSalesOrders } = require('../controllers/saleOrderCon
 const router = express.Router();
 
 router.post('/create-salesorder', createSaleOrder);
-router.get('/all-salesorder', getSalesOrders);
+router.post('/all-salesorder', getSalesOrders);
 
 module.exports = router;

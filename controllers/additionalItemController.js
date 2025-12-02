@@ -3,23 +3,80 @@ const AdditionalItem = require("../model/additionalItem");
 // CREATE
 exports.createAdditionalItem = async (req, res) => {
     console.log("🆕 [CREATE] Incoming request body:", req.body);
+
     try {
-        const item = await AdditionalItem.create(req.body);
+        const { userId, title, description, sku, image } = req.body;
+
+        if (!userId) {
+            return res.status(400).json({ error: "userId is required" });
+        }
+
+        const user = await User.findById(userId);
+        if (!user) return res.status(400).json({ error: "Invalid userId" });
+
+        // Determine superAdmin & admin
+        let superAdminId;
+        let adminId = null;
+
+        if (user.role === "SuperAdmin") {
+            superAdminId = user._id;
+        } else if (user.role === "Admin") {
+            superAdminId = user.managingSuperAdmin;
+            adminId = user._id;
+        } else {
+            return res.status(403).json({ error: "Unauthorized" });
+        }
+
+        const item = await AdditionalItem.create({
+            title,
+            description,
+            sku,
+            image,
+            superAdmin: superAdminId,
+            createdByAdmin: adminId
+        });
+
         console.log("✅ [CREATE] Additional item created:", item._id);
         res.status(201).json(item);
+
     } catch (error) {
         console.error("❌ [CREATE] Error creating additional item:", error.message);
         res.status(400).json({ error: "Failed to create item", details: error.message });
     }
 };
 
+
 // READ ALL
 exports.getAdditionalItems = async (req, res) => {
-    console.log("📦 [GET ALL] Fetching all additional items...");
+    console.log("📦 [GET ALL] Fetching additional items…");
+
     try {
-        const items = await AdditionalItem.find().populate("productId");
+        const { userId } = req.body;
+
+        if (!userId) {
+            return res.status(400).json({ error: "userId is required" });
+        }
+
+        const user = await User.findById(userId);
+        if (!user) return res.status(400).json({ error: "Invalid userId" });
+
+        let superAdminId;
+
+        if (user.role === "SuperAdmin") {
+            superAdminId = user._id;
+        } else if (user.role === "Admin") {
+            superAdminId = user.managingSuperAdmin;
+        } else {
+            return res.status(403).json({ error: "Unauthorized" });
+        }
+
+        // 🔥 Fetch only items under same superAdmin
+        const items = await AdditionalItem.find({ superAdmin: superAdminId })
+            .populate("createdByAdmin", "name email");
+
         console.log(`✅ [GET ALL] Found ${items.length} items`);
         res.json(items);
+
     } catch (error) {
         console.error("❌ [GET ALL] Error fetching items:", error.message);
         res.status(500).json({ error: "Failed to fetch items", details: error.message });

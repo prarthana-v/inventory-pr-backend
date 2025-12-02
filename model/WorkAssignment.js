@@ -18,7 +18,6 @@ const WorkerAssignmentSchema = new mongoose.Schema({
         ref: 'Challan',
         required: true
     },
-
     // --- 👇 ADD THESE NEW FIELDS ---
     pendingClearedQuantity: { type: Number, default: 0 },
     pendingLostlQuantity: { type: Number, default: 0 },

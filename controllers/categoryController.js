@@ -1,57 +1,82 @@
 const Category = require('../model/category');
+const User = require('../model/auth');
 
-// CREATE
-// in your categoryController.js
 exports.createCategory = async (req, res) => {
     try {
-        console.log('================ Starting createCategory for understand proccess');
-        const { name, description, parent } = req.body;
-        console.log(`================ Received data: { name: ${name}, description: ${description}, parent: ${parent} } for understand proccess`);
+        console.log("===== Starting createCategory =====");
+        const { name, description, parent, userId } = req.body;
+        console.log("Incoming:", req.body);
 
-        // Find ANY category with this name, even if it's deleted
-        const existingCategory = await Category.findOne({ name }); // <-- Find by name
+        if (!userId) {
+            return res.status(400).json({ msg: "userId is required" });
+        }
 
-        if (existingCategory) {
+        // Fetch creator
+        const creator = await User.findById(userId);
+        if (!creator) {
+            return res.status(400).json({ msg: "Invalid userId" });
+        }
 
-            // --- SCENARIO 1: Category exists and is ACTIVE ---
-            if (existingCategory.isDeleted === false) {
-                console.warn('================ Active category already exists for understand proccess');
-                return res.status(400).json({ msg: 'Category already exists' });
+        // Determine superAdmin
+        let superAdminId;
+        if (creator.role === "SuperAdmin") {
+            superAdminId = creator._id;
+        } else if (creator.role === "Admin") {
+            if (!creator.managingSuperAdmin) {
+                return res.status(400).json({ msg: "Admin does not belong to a SuperAdmin" });
+            }
+            superAdminId = creator.managingSuperAdmin;
+        } else {
+            return res.status(403).json({ msg: "Only SuperAdmin/Admin can create categories" });
+        }
+
+        console.log("Final superAdminId:", superAdminId.toString());
+
+        // Check existing category under the same superAdmin
+        const existing = await Category.findOne({
+            name,
+            superAdmin: superAdminId
+        });
+
+        if (existing) {
+            if (!existing.isDeleted) {
+                return res.status(400).json({ msg: "Category already exists for this SuperAdmin" });
             }
 
-            // --- SCENARIO 2: Category exists but is SOFT-DELETED ---
-            // Instead of creating a duplicate, we reactivate the old one.
-            console.log('================ Reactivating existing deleted category for understand proccess');
+            // Reactivate soft-deleted category
+            existing.isDeleted = false;
+            existing.deletedAt = null;
+            existing.description = description || existing.description;
+            existing.parent = parent || null;
 
-            existingCategory.isDeleted = false;
-            existingCategory.deletedAt = null;
-            existingCategory.description = description; // Update with new data
-            existingCategory.parent = parent || null;   // Update with new data
+            await existing.save();
 
-            await existingCategory.save();
-
-            console.log('================ Category reactivated successfully for understand proccess');
-            // Send 200 OK, since we performed an update, not a creation
-            return res.status(200).json({ msg: 'Category reactivated', category: existingCategory });
-
-        } else {
-            // --- SCENARIO 3: No category with this name exists ---
-            // Create it fresh.
-            console.log('================ Creating new category for understand proccess');
-            const newCategory = new Category({
-                name,
-                description,
-                parent: parent || null
+            return res.status(200).json({
+                msg: "Category reactivated",
+                category: existing
             });
-            await newCategory.save();
-
-            console.log('================ Category created successfully for understand proccess');
-            // Send 201 Created
-            return res.status(201).json({ msg: 'Category created', category: newCategory });
         }
+
+        // Create new category
+        const category = await Category.create({
+            superAdmin: superAdminId,
+            createdBy: creator._id,
+            name,
+            description,
+            parent: parent || null
+        });
+
+        return res.status(201).json({
+            msg: "Category created successfully",
+            category
+        });
+
     } catch (err) {
-        console.error('================ Error in createCategory: ', err.message, ' for understand proccess');
-        res.status(500).json({ msg: 'Server error', error: err.message });
+        console.error("❌ createCategory Error:", err.message);
+        res.status(500).json({
+            msg: "Server error",
+            error: err.message
+        });
     }
 };
 
@@ -146,15 +171,55 @@ exports.deleteCategory = async (req, res) => {
 // LIST ALL
 exports.getAllCategories = async (req, res) => {
     try {
-        console.log('================ Starting getAllCategories for understand proccess');
-        const categories = await Category.find({ isDeleted: false });
+        console.log("===== Starting getAllCategories =====");
+        const { userId } = req.body;
+        console.log(req.body,"userId");
 
-        console.log(`📦 ${categories.length} categories fetched for understand proccess`);
-        return res.status(200).json({ categories });
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: "userId is required"
+            });
+        }
+
+        const user = await User.findById(userId);
+
+        if (!user) {
+            return res.status(400).json({ msg: "Invalid userId" });
+        }
+
+        // Determine superAdmin
+        let superAdminId;
+
+        if (user.role === "SuperAdmin") {
+            superAdminId = user._id;
+        } else if (user.role === "Admin") {
+            superAdminId = user.managingSuperAdmin;
+        } else {
+            return res.status(403).json({ msg: "Unauthorized role" });
+        }
+
+        console.log("📥 Fetching categories for:", superAdminId.toString());
+
+        const categories = await Category.find({
+            superAdmin: superAdminId,
+            isDeleted: false
+        });
+
+        console.log(`📦 Found ${categories.length} categories`);
+
+        return res.status(200).json({
+            success: true,
+            count: categories.length,
+            categories
+        });
 
     } catch (err) {
-        console.error('❌ Error fetching categories: ', err.message, ' for understand proccess');
-        return res.status(500).json({ msg: 'Server error', error: err.message });
+        console.error("❌ getAllCategories Error:", err.message);
+        res.status(500).json({
+            msg: "Server error",
+            error: err.message
+        });
     }
 };
 

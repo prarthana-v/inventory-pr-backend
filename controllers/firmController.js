@@ -7,78 +7,62 @@ const User = require('../model/auth');
  */
 exports.createFirm = async (req, res) => {
     try {
-        const { name, address, contact } = req.body;
+        const { name, address, contact, superadminId } = req.body;
 
-        // Basic validation
-        if (!name || !address || !contact) {
+        // Validate required fields
+        if (!name || !address || !contact || !superadminId) {
             console.warn("⚠️ Missing required fields for firm creation.");
-            return res.status(400).json({ success: false, message: 'All fields are required.' });
+            return res.status(400).json({
+                success: false,
+                message: 'Name, address, contact & superadminId are required.'
+            });
+        }
+
+        // Validate SuperAdmin
+        const superAdmin = await User.findById(superadminId);
+        if (!superAdmin || superAdmin.role !== "SuperAdmin") {
+            console.warn(`⚠️ Invalid SuperAdmin ID: ${superadminId}`);
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid SuperAdmin. Only SuperAdmin can create firms.'
+            });
         }
 
         // Check if firm already exists
-        const existingFirm = await Firm.findOne({ name });
+        const existingFirm = await Firm.findOne({ name, superAdmin: superadminId });
         if (existingFirm) {
             console.warn(`⚠️ Firm already exists: ${name}`);
-            return res.status(409).json({ success: false, message: 'Firm already exists.' });
+            return res.status(409).json({
+                success: false,
+                message: 'Firm with this name already exists under this SuperAdmin.'
+            });
         }
 
-        // Create and save the new firm
-        const firm = new Firm({ name, address, contact });
-        await firm.save();
+        // Create Firm
+        const newFirm = await Firm.create({
+            name,
+            address,
+            contact,
+            superAdmin: superadminId,
+            admins: []   // default empty
+        });
 
-        console.log(`✅ Firm created: ${firm._id} (${name})`);
-        res.status(201).json({ success: true, message: 'Firm created successfully.', firm });
+        console.log(`✅ Firm created: ${newFirm._id} (${name})`);
+        res.status(201).json({
+            success: true,
+            message: 'Firm created successfully.',
+            firm: newFirm
+        });
+
     } catch (error) {
         console.error("❌ Error creating firm:", error.message);
-        res.status(500).json({ success: false, message: 'Server error.', error: error.message });
+        res.status(500).json({
+            success: false,
+            message: 'Server error.',
+            error: error.message
+        });
     }
 };
-/**
- * GET /api/firms
- * Get all firms
- */
-
-// exports.getAllFirms = async (req, res) => {
-//     try {
-//         const { userId, role } = req.body;
-//         console.log("📥 Incoming request:", { userId, role });
-
-//         let firms = [];
-
-//         if (role === "SuperAdmin") {
-//             console.log("👑 Role is SuperAdmin → fetching all firms with admins...");
-
-//             firms = await Firm.find()
-//                 .populate({
-//                     path: "admins",
-//                     match: { role: "Admin" }, // only bring admin role users
-//                     select: "name email role"
-//                 })
-//                 .lean();
-
-//             // filter out firms with no admins after population
-//             firms = firms.filter(firm => firm.admins.length > 0);
-
-//             console.log(`✅ SuperAdmin fetched ${firms.length} firms.`);
-//             console.log("📊 Firms data:", JSON.stringify(firms, null, 2));
-//         } else {
-//             console.log(`👤 Role is ${role} → fetching firms where user ${userId} is an admin...`);
-
-//             firms = await Firm.find({ admins: userId })
-//                 .populate("admins", "name email role")
-//                 .lean();
-
-//             console.log(`✅ User ${userId} fetched ${firms.length} firms.`);
-//             console.log("📊 Firms data:", JSON.stringify(firms, null, 2));
-//         }
-
-//         res.status(200).json({ success: true, firms });
-//     } catch (error) {
-//         console.error("❌ Error while fetching firms:", error.message);
-//         res.status(500).json({ success: false, message: "Server Error", error: error.message });
-//     }
-
-// };
 
 exports.getAllFirms = async (req, res) => {
     try {
@@ -87,42 +71,57 @@ exports.getAllFirms = async (req, res) => {
 
         let firms = [];
 
+        // 🟢 SUPERADMIN → Fetch ONLY its firms
         if (role === "SuperAdmin") {
-            console.log("👑 Role is SuperAdmin → fetching ALL firms (with or without admins)...");
+            console.log(`👑 SuperAdmin ${userId} → fetching firms owned by this SuperAdmin...`);
 
-            firms = await Firm.find()
+            firms = await Firm.find({ superAdmin: userId })
                 .populate({
                     path: "admins",
-                    match: { role: "Admin" }, // still only populate Admin users
+                    match: { role: "Admin" },
                     select: "name email role"
                 })
                 .lean();
 
-            console.log(`✅ SuperAdmin fetched ${firms.length} firms.`);
-        } else if (role === "Admin") {
-            console.log(`👤 Role is Admin → fetching firms assigned to user ${userId}...`);
+            console.log(`✅ SuperAdmin ${userId} fetched ${firms.length} firm(s).`);
+        }
+
+        // 🟡 ADMIN → fetch firms where admin is assigned
+        else if (role === "Admin") {
+            console.log(`👤 Admin ${userId} → fetching assigned firms...`);
 
             firms = await Firm.find({ admins: userId })
                 .populate("admins", "name email role")
                 .lean();
 
-            console.log(`✅ Admin ${userId} fetched ${firms.length} firms.`);
-        } else {
-            console.warn(`⚠️ Role ${role} not authorized to fetch firms.`);
-            return res.status(403).json({ success: false, message: "Unauthorized role" });
+            console.log(`✅ Admin ${userId} fetched ${firms.length} firm(s).`);
         }
 
-        res.status(200).json({ success: true, firms });
+        // ❌ Other roles not allowed
+        else {
+            console.warn(`⚠️ Unauthorized role: ${role}`);
+            return res.status(403).json({
+                success: false,
+                message: "Unauthorized role"
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            firms
+        });
+
     } catch (error) {
         console.error("❌ Error while fetching firms:", error.message);
-        res.status(500).json({ success: false, message: "Server Error", error: error.message });
+        res.status(500).json({
+            success: false,
+            message: "Server Error",
+            error: error.message
+        });
     }
 };
 
-/**
- * GET /api/firms/:id
- * Get firm by ID
- */
+
 exports.getFirmById = async (req, res) => {
     try {
 
@@ -149,10 +148,6 @@ exports.getFirmById = async (req, res) => {
     }
 };
 
-/**
- * GET /api/firms/admin/:adminId
- * Get firms by admin ID
- */
 exports.getFirmsByAdminId = async (req, res) => {
     try {
         const { adminId } = req.params;
@@ -166,10 +161,6 @@ exports.getFirmsByAdminId = async (req, res) => {
     }
 };
 
-/**
- * PUT /api/firms/:id
- * Edit/update a firm
- */
 exports.editFirm = async (req, res) => {
     try {
         const { firmId, ...updates } = req.body;
@@ -195,10 +186,6 @@ exports.editFirm = async (req, res) => {
     }
 };
 
-/**
- * DELETE /api/firms/:id
- * Delete a firm
- */
 exports.deleteFirm = async (req, res) => {
     console.log("🗑️ Deleting firm with ID:", req.body);
     const { firmId } = req.body;
@@ -237,10 +224,6 @@ exports.deleteFirm = async (req, res) => {
     }
 };
 
-/**
- * POST /api/firms/assign
- * Assign a firm to an admin
- */
 exports.assignFirmsToAdmin = async (req, res) => {
     try {
         console.log("assign firms", req.body);

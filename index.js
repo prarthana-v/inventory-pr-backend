@@ -13,6 +13,7 @@ const app = express();
 
 const allowedOrigins = [
   'https://inventory.reliablesolution.in',
+  'https://inventoryadmin.reliablesolution.in',
   'http://localhost:5173', // for local testing
   'http://localhost:3000' // for local testing
 ];
@@ -27,12 +28,12 @@ app.get("/", (req, res) => {
   res.send("Inventory Backend is Live 🚀");
 });
 
-app.use(cors());
-// app.use(cors({
-//   origin: "*",
-//   methods: ["GET", "POST", "PUT", "DELETE"],
-//   credentials: true
-// }));
+// app.use(cors());
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true
+}));
 
 
 // Routes

@@ -1,4 +1,4 @@
-const jobWorkers = require('../model/jobworker')
+const User = require('../model/auth');
 const express = require('express');
 const JobWorker = require('../model/jobworker');
 const bcrypt = require('bcryptjs');
@@ -7,72 +7,166 @@ const WorkAssignment = require('../model/WorkAssignment');
 
 exports.createJobWorker = async (req, res) => {
     try {
-        const { name, phone, email, password } = req.body;
-        if (!name || !phone || !email) {
-            return res.status(400).json({ message: 'Name, phone, and email are required.' });
-        }
+        const { name, phone, email, password, userId } = req.body;
 
-        // Check if a job worker with the same email already exists
-        const existingWorker = await JobWorker.findOne({
-            email: email.toLowerCase()
-        });
-        if (existingWorker) {
+        console.log("📥 Incoming Create JobWorker:", req.body);
+
+        // Validate required fields
+        if (!name || !phone || !email || !password || !userId) {
             return res.status(400).json({
-                message: 'Job worker with this email already exists'
+                message: "name, phone, email, password & userId are required."
             });
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
-        console.log('🔒 Password hashed successfully.');
+        // Fetch creator (can be SuperAdmin or Admin)
+        const creator = await User.findById(userId);
 
-        const newWorker = await JobWorker.create({
-            name, phone, email, password: hashedPassword,
-            profileImage: req.file ? `/uploads/${req.file.filename}` : null
+        if (!creator) {
+            return res.status(400).json({ message: "Invalid userId" });
+        }
+
+        // Determine superAdminId
+        let superAdminId;
+
+        if (creator.role === "SuperAdmin") {
+            superAdminId = creator._id;  // SUPERADMIN DIRECT
+        } 
+        else if (creator.role === "Admin") {
+            if (!creator.managingSuperAdmin) {
+                return res.status(400).json({
+                    message: "Admin does not belong to any SuperAdmin"
+                });
+            }
+            superAdminId = creator.managingSuperAdmin;  // ADMIN → ASSIGNED SUPERADMIN
+        } 
+        else {
+            return res.status(403).json({
+                message: "Only SuperAdmin or Admin can create job workers"
+            });
+        }
+
+        console.log("📌 Final superAdminId for JobWorker:", superAdminId);
+
+        // Check duplicate email
+        const existingWorker = await JobWorker.findOne({
+            email: email.toLowerCase()
         });
 
-        res.status(201).json({ sucess: true, message: "Job worker reated successfullyy !!", newWorker });
+        if (existingWorker) {
+            return res.status(400).json({
+                message: "Job worker with this email already exists"
+            });
+        }
+
+        // Hash password
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // Create worker
+        const newWorker = await JobWorker.create({
+            superAdmin: superAdminId,
+            createdBy: userId, 
+            name,
+            phone,
+            email: email.toLowerCase(),
+            password: hashedPassword,
+            profileImage: req.file ? `/uploads/${req.file.filename}` : null,
+      
+        });
+
+        return res.status(201).json({
+            success: true,
+            message: "Job worker created successfully!",
+            jobWorker: newWorker
+        });
+
     } catch (err) {
-        console.log('Error creating job worker:', err.message);
-        res.status(500).json({ message: 'Server error', error: err.message });
+        console.error("❌ Error creating job worker:", err.message);
+        res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
     }
 };
 
-exports.updateJobWorker = async (req, res) => {
+// exports.updateJobWorker = async (req, res) => {
 
+//     try {
+//         const { jobWorkerId, name, phone, email, password } = req.body;
+//         console.log( req.body," req.body update jobworker---------------------------------")
+
+//         if (!jobWorkerId) {
+//             console.warn("⚠️ jobWorkerId missing in request body.");
+//             return res.status(400).json({ error: "jobWorkerId is required." });
+//         }
+
+//         const worker = await JobWorker.findById(jobWorkerId);
+//         if (!worker) {
+//             console.warn(`⚠️ Job Worker not found: ${jobWorkerId}`);
+//             return res.status(404).json({ error: "Job Worker not found." });
+//         }
+
+//         // Update only provided fields
+//         if (name !== undefined) worker.name = name;
+//         if (phone !== undefined) worker.phone = phone;
+//         if (email !== undefined) worker.email = email;
+//         if (password !== undefined && password !== null && password.trim() !== "") {
+//             const hashedPassword = await bcrypt.hash(password, 10);
+//             worker.password = hashedPassword;
+//             console.log("🔒 Password updated successfully.");
+//         } else {
+//             console.log("ℹ️ No password provided → keeping existing password.");
+//         }
+
+//         if (req.file) worker.profileImage = `/uploads/${req.file.filename}`;
+
+//         await worker.save();
+
+//         console.log(`✅ Job Worker updated: ${worker._id}`);
+//         return res.status(200).json({
+//             message: "Job Worker updated successfully.",
+//             worker
+//         });
+
+//     } catch (err) {
+//         console.error("❌ Error updating Job Worker:", err.message);
+//         return res.status(500).json({ error: "Server error while updating job worker." });
+//     }
+// };
+
+exports.updateJobWorker = async (req, res) => {
     try {
-        const { jobWorkerId, name, phone, email, password } = req.body;
+        const { jobWorkerId, password, ...rest } = req.body;
 
         if (!jobWorkerId) {
-            console.warn("⚠️ jobWorkerId missing in request body.");
             return res.status(400).json({ error: "jobWorkerId is required." });
         }
 
-        const worker = await JobWorker.findById(jobWorkerId);
-        if (!worker) {
-            console.warn(`⚠️ Job Worker not found: ${jobWorkerId}`);
+        const updateData = { ...rest };
+
+        // Handle password separately
+        if (password && password.trim() !== "") {
+            const hashedPassword = await bcrypt.hash(password, 10);
+            updateData.password = hashedPassword;
+        }
+
+        // Handle file upload
+        if (req.file) {
+            updateData.profileImage = `/uploads/${req.file.filename}`;
+        }
+
+        const updatedWorker = await JobWorker.findByIdAndUpdate(
+            jobWorkerId,
+            { $set: updateData },
+            { new: true, runValidators: true }
+        );
+
+        if (!updatedWorker) {
             return res.status(404).json({ error: "Job Worker not found." });
         }
 
-        // Update only provided fields
-        if (name !== undefined) worker.name = name;
-        if (phone !== undefined) worker.phone = phone;
-        if (email !== undefined) worker.email = email;
-        if (password !== undefined && password !== null && password.trim() !== "") {
-            const hashedPassword = await bcrypt.hash(password, 10);
-            worker.password = hashedPassword;
-            console.log("🔒 Password updated successfully.");
-        } else {
-            console.log("ℹ️ No password provided → keeping existing password.");
-        }
-
-        if (req.file) worker.profileImage = `/uploads/${req.file.filename}`;
-
-        await worker.save();
-
-        console.log(`✅ Job Worker updated: ${worker._id}`);
         return res.status(200).json({
             message: "Job Worker updated successfully.",
-            worker
+            worker: updatedWorker,
         });
 
     } catch (err) {
@@ -80,19 +174,6 @@ exports.updateJobWorker = async (req, res) => {
         return res.status(500).json({ error: "Server error while updating job worker." });
     }
 };
-
-// exports.deleteJobWorker = async (req, res) => {
-//     try {
-//         const { jobWorkerId } = req.body;
-//         const worker = await JobWorker.findByIdAndDelete(jobWorkerId);
-//         if (!worker) {
-//             return res.status(404).json({ message: 'Job Worker not found.' });
-//         }
-//         res.json({ message: 'Job Worker deleted.', worker });
-//     } catch (err) {
-//         res.status(500).json({ message: 'Server error', error: err.message });
-//     }
-// };
 
 exports.deleteJobWorker = async (req, res) => {
     try {
@@ -119,22 +200,80 @@ exports.deleteJobWorker = async (req, res) => {
 
 exports.getAllJobWorkers = async (req, res) => {
     try {
-        console.log('Fetching all job workers...');
+        const { userId } = req.body;
 
-        const workers = await JobWorker.find({ isDeleted: false });
+        console.log("📥 [GET JobWorkers] Incoming userId:", userId);
 
-        if (!workers || workers.length === 0) {
-            console.warn('⚠️ No job workers found.');
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: "userId is required"
+            });
         }
-        console.log(`📦 ${workers.length} job workers fetched successfully.`);
-        // Return the list of job workers
-        res.json({
+
+        // 1️⃣ Fetch user
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+
+        console.log("👤 User role:", user.role);
+
+        // 2️⃣ Determine the correct superAdminId
+        let superAdminId;
+
+        if (user.role === "SuperAdmin") {
+            superAdminId = userId;
+            console.log("🔵 User is SuperAdmin. Using their own ID.");
+        } else if (user.role === "Admin") {
+            superAdminId = user.managingSuperAdmin;
+            console.log("🟢 User is Admin. Using managingSuperAdmin:", superAdminId);
+        } else {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid role. Only Admin or SuperAdmin allowed."
+            });
+        }
+
+        // 3️⃣ Get all admins under this superAdmin
+        const admins = await User.find({ managingSuperAdmin: superAdminId })
+            .select("_id");
+
+        const adminIds = admins.map(a => a._id);
+
+        console.log("👥 Admins under this SuperAdmin:", adminIds);
+
+        // 4️⃣ Find job workers created by:
+        //  - superAdmin
+        //  - all the admins under that superAdmin
+        const workers = await JobWorker.find({
+            superAdmin: {
+                $in: [superAdminId, ...adminIds]
+            },
+            $or: [
+                { isDeleted: false },
+                { isDeleted: { $exists: false } } // in case missing field
+            ]
+        });
+
+        console.log(`📦 Found ${workers.length} job workers`);
+
+        return res.status(200).json({
             success: true,
-            message: 'Job Workers fetched successfully.',
+            message: "Job workers fetched successfully",
             workers
         });
+
     } catch (err) {
-        res.status(500).json({ message: 'Server error', error: err.message });
+        console.error("❌ Error fetching job workers:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Server error",
+            error: err.message
+        });
     }
 };
 
@@ -176,6 +315,7 @@ exports.loginJobworker = async (req, res) => {
 
         // Find the job worker by email
         const jobWorker = await JobWorker.findOne({ email: email, isDeleted: false });
+        console.log(jobWorker,"jobWorker------------------")
         if (!jobWorker) {
             return res.status(404).json({ message: 'Job worker not found or has been deactivated.' });
         }
@@ -474,7 +614,7 @@ exports.getJobWorkerDashboard = async (req, res) => {
             });
         }
 
-        // 4. 📦 Prepare the final response object
+      
         const responseData = {
             summary: summaryStats,
             details: Object.values(groupedByChallan) // Convert the grouped object into an array

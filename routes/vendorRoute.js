@@ -5,7 +5,7 @@ const { createVendor, getAllVendors, deleteVendor, updateVendor, getVendorById }
 
 // 👇 API Endpoints
 router.post('/create-vendor', createVendor);           // Create vendor
-router.get('/all-vendor', getAllVendors);           // Get all vendors
+router.post('/all-vendor', getAllVendors);           // Get all vendors
 router.get('/getvendorbyid', getVendorById);        // Get single vendor by ID
 router.put('/update-vendor', updateVendor);         // Update vendor
 router.delete('/delete-vendor', deleteVendor);      // Delete vendor

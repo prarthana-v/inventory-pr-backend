@@ -1,6 +1,11 @@
 const mongoose = require('mongoose');
 
 const jobWorkerSchema = new mongoose.Schema({
+    superAdmin: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true,
+    },
     name: {
         type: String,
         required: true,
@@ -22,6 +27,11 @@ const jobWorkerSchema = new mongoose.Schema({
         required: true,
         trim: true
     },
+       createdBy: {                // who actually created the vendor (Admin or SuperAdmin)
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+            required: true
+        },  
     isDeleted: {
         type: Boolean,
         default: false

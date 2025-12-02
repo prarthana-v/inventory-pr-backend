@@ -12,7 +12,7 @@ router.put('/update-category', updateCategory);
 router.delete('/delete-category', deleteCategory);
 
 // List all categories
-router.get('/all-categories', getAllCategories);
+router.post('/all-categories', getAllCategories);
 
 // Get category details (optionally with products)
 router.get('/getcategorybyid', getCategoryById);

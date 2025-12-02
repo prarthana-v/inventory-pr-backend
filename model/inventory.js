@@ -1,6 +1,16 @@
     const mongoose = require('mongoose');
 
     const InventorySchema = new mongoose.Schema({
+        superAdmin: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true
+        },
+        createdBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            required: true
+        },
         products: [
             {
                 product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },

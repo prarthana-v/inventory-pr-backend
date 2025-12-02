@@ -6,7 +6,17 @@ const VendorSchema = new mongoose.Schema({
         phone: { type: String },
         email: { type: String },
         address: { type: String }
-    },                                                          // Contact details
+    },  
+    superAdmin: {               // the owning SuperAdmin (visibility scope)
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+    },
+    createdBy: {                // who actually created the vendor (Admin or SuperAdmin)
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true
+    },                                                       // Contact details
     // status: { type: String, enum: ['Active', 'Inactive'], default: 'Active' }, // Vendor status
     productList: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Product' }],  // Products supplied by this vendor
     // firm: { type: mongoose.Schema.Types.ObjectId, ref: 'Firm' }              // For multi-firm setups (optional)

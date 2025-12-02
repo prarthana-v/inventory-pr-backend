@@ -18,8 +18,12 @@ const userSchema = new Schema({
     },
     role: {
         type: String,
-        enum: ['Admin', 'SuperAdmin'], // Defines the possible roles
+        enum: ['Admin', 'SuperAdmin','SaaSadmin'], // Defines the possible roles
         required: true,
+    },
+    managingSuperAdmin: {
+        type: Schema.Types.ObjectId,
+        ref: 'User', // Refers back to the User model
     },
     // Stores the firm the user is currently operating under
     activeFirm: {

@@ -14,6 +14,11 @@ const firmSchema = new Schema({
     phone: {
         type: String,
     },
+    superAdmin: {
+        type: Schema.Types.ObjectId,
+        ref: 'User', // Should be a SuperAdmin User ID
+        required: true,
+    },
     admins: [{
         type: Schema.Types.ObjectId,
         ref: 'User'

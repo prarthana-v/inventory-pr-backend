@@ -5,20 +5,23 @@ const upload = require('../middleware/upload');
 const router = express.Router();
 
 router.post('/add-inventory', createInventory);
+
 router.put('/update-inventory', updateInventory);
+
 router.get('/get-inventory', getInventoryById);
+
 router.post('/all-inventory', getInventories);
+
 router.delete('/delete-inventory', deleteInventory);
 
 router.post(
     '/assign-stock',
-    upload.any(),   // accept ANY file → simplest for dynamic index images
+    upload.any(),
     assignToWorkers
 );
 
 router.post('/get-assignments', getAssignments);
 
-//view challan api
 router.get('/get-assigned-products', getAssignmentsByJobWorker);
 
 router.get("/stock-summary", getProductStockSummary);

@@ -1,60 +1,152 @@
 const Product = require("../model/product");
 const WorkAssignment = require("../model/WorkAssignment");
 const Inventory = require('../model/inventory');
+const User = require('../model/auth');
 
 // Creates a new product using request body data
+// CREATE PRODUCT
 exports.createProduct = async (req, res) => {
     try {
-        console.log("📝 [CREATE] Request body:", req.body);
-        console.log("📄 [CREATE] File:", req.file);
+        console.log("📝 [CREATE PRODUCT] Incoming:", req.body);
+        console.log("📸 Uploaded file:", req.file);
 
-        if (!req.body.title || !req.body.categoryId || !req.file) {
-            console.warn("⚠️ [CREATE] Missing required fields: title, categoryId, or image");
-            return res.status(400).json({ error: "Missing required fields: title, categoryId, or image" });
+        const { title, categoryId, type, userId } = req.body;
+
+        // VALIDATION
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                error: "userId is required"
+            });
         }
 
-        // Example: Check for required fields (adjust as needed)
-        if (!req.body.title || !req.body.categoryId) {
-            console.warn("⚠️ [CREATE] Missing required fields: title or categoryId");
-            return res.status(400).json({ error: "Missing required fields: title or categoryId" });
+        if (!title || !categoryId || !type) {
+            return res.status(400).json({
+                success: false,
+                error: "title, categoryId, and type are required"
+            });
         }
 
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                error: "Product image is required"
+            });
+        }
+
+        // FETCH CREATOR
+        const creator = await User.findById(userId);
+        if (!creator) {
+            return res.status(400).json({ success: false, error: "Invalid userId" });
+        }
+
+        // DETERMINE SUPERADMIN
+        let superAdminId;
+
+        if (creator.role === "SuperAdmin") {
+            superAdminId = creator._id;
+        } else if (creator.role === "Admin") {
+            if (!creator.managingSuperAdmin) {
+                return res.status(400).json({ error: "Admin not assigned to any SuperAdmin" });
+            }
+            superAdminId = creator.managingSuperAdmin;
+        } else {
+            return res.status(403).json({
+                success: false,
+                error: "Only SuperAdmin/Admin can create products"
+            });
+        }
+
+        console.log("📌 Final superAdminId:", superAdminId.toString());
+
+        // PREPARE DATA
         const productData = {
-            ...req.body,
-            image: req.file.filename  // Save the file path to the image field
+            title,
+            categoryId,
+            type,
+            superAdmin: superAdminId,
+            createdBy: creator._id,
+            description: req.body.description || "",
+            sku: req.body.sku || null,
+            totalAvailableStock: req.body.totalAvailableStock || 0,
+            image: req.file.filename
         };
 
+        // CREATE PRODUCT
         const product = await Product.create(productData);
+        console.log("✅ Product Created:", product._id);
 
-        console.log("✅ [CREATE] Product created:", product);
-        res.status(201).json(product);
+        return res.status(201).json({
+            success: true,
+            message: "Product created successfully",
+            product
+        });
+
     } catch (err) {
-        console.log("❌ [CREATE] Error:", err);
-        res.status(500).json({ error: "Server error while creating product." });
+        console.error("❌ CREATE PRODUCT ERROR:", err);
+        res.status(500).json({
+            success: false,
+            error: "Server error while creating product",
+            details: err.message
+        });
     }
 };
 
-// Fetches all products, supports query filters
 exports.getAllProducts = async (req, res) => {
     try {
-        const filters = { ...req.query };
-        console.log("[GET ALL] Fetching non-deleted products with filters:", filters);
+        const { userId } = req.body;
 
-        // 🔥 Fetch only non-deleted products
+        console.log("📥 [GET PRODUCTS] userId:", userId);
+
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                error: "userId is required"
+            });
+        }
+
+        // GET USER
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(400).json({ success: false, error: "Invalid userId" });
+        }
+
+        // DETERMINE SUPERADMIN
+        let superAdminId;
+
+        if (user.role === "SuperAdmin") {
+            superAdminId = user._id;
+        } else if (user.role === "Admin") {
+            superAdminId = user.managingSuperAdmin;
+        } else {
+            return res.status(403).json({ error: "Unauthorized role" });
+        }
+
+        console.log("📌 Fetching products for SuperAdmin:", superAdminId.toString());
+
+        // FETCH ALL NON-DELETED PRODUCTS FOR THIS SUPERADMIN
         const products = await Product.find({
-            isDeleted: false,
+            superAdmin: superAdminId,
+            isDeleted: false
         }).populate("categoryId", "name");
 
-        console.log(`[GET ALL] Found ${products.length} active products`);
+        console.log(`📦 Found ${products.length} products`);
 
-        res.json(products);
+        return res.status(200).json({
+            success: true,
+            products
+        });
+
     } catch (err) {
-        console.error("[GET ALL] Error:", err.message);
-        res.status(500).json({ error: err.message });
+        console.error("❌ GET PRODUCTS ERROR:", err.message);
+        res.status(500).json({
+            success: false,
+            error: "Server error while fetching products",
+            details: err.message
+        });
     }
 };
 
-// Fetches a single product by its ID
 exports.getProductById = async (req, res) => {
     try {
         console.log("[GET ONE] Product ID:", req.params.id);
@@ -72,8 +164,6 @@ exports.getProductById = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 };
-
-// In productController.js
 
 exports.updateProduct = async (req, res) => {
     try {
@@ -123,7 +213,6 @@ exports.updateProduct = async (req, res) => {
     }
 };
 
-// Deletes a product by its ID
 exports.deleteProduct = async (req, res) => {
     try {
         const { productId } = req.body;
@@ -186,7 +275,6 @@ exports.deleteProduct = async (req, res) => {
     }
 };
 
-
 exports.getAllClearedProducts = async (req, res) => {
     try {
         const clearedProducts = await WorkAssignment.find({ status: "Cleared" })
@@ -233,20 +321,56 @@ exports.getAllClearedProducts = async (req, res) => {
 
 exports.getProductDetailsReport = async (req, res) => {
     try {
-        console.log("📊 Generating detailed product report (including unassigned)...");
+        console.log("📌 Incoming Request (Product Report):", req.body);
+
+        const { userId } = req.body;
+
+        if (!userId) {
+            console.log("❌ userId missing");
+            return res.status(400).json({ message: "userId is required" });
+        }
+
+        // Fetch user
+        const user = await User.findById(userId);
+        console.log("👤 User Fetched:", user ? user.role : "User Not Found");
+
+        if (!user) return res.status(400).json({ message: "Invalid userId" });
+
+        let superAdminId;
+
+        if (user.role === "SuperAdmin") {
+            superAdminId = user._id;
+            console.log("🟦 Role: SuperAdmin → Using own ID:", superAdminId);
+        } else if (user.role === "Admin") {
+            superAdminId = user.managingSuperAdmin;
+            console.log("🟩 Role: Admin → Using managingSuperAdmin:", superAdminId);
+        } else {
+            console.log("❌ Unauthorized role");
+            return res.status(403).json({ message: "Unauthorized" });
+        }
+
+        console.log("🔍 Fetching product report for SuperAdmin:", superAdminId);
 
         const productReport = await Product.aggregate([
-            // Stage 1: Lookup assignments for each product
+
+            // Stage 0: Filter products by superAdmin
+            {
+                $match: {
+                    superAdmin: superAdminId
+                }
+            },
+
+            // Stage 1: Lookup assignments
             {
                 $lookup: {
-                    from: "workassignments", // Collection name for assignments
-                    localField: "_id",       // Product _id
-                    foreignField: "productId", // Field in WorkAssignment
+                    from: "workassignments",
+                    localField: "_id",
+                    foreignField: "productId",
                     as: "assignments"
                 }
             },
 
-            // Stage 2: Add calculated totals (handle products with no assignments)
+            // Stage 2: Stock calculations
             {
                 $addFields: {
                     totalAssignedStock: { $sum: "$assignments.quantity" },
@@ -256,7 +380,7 @@ exports.getProductDetailsReport = async (req, res) => {
                 }
             },
 
-            // Stage 3: Project the final output
+            // Stage 3: Format final result
             {
                 $project: {
                     _id: 0,
@@ -272,10 +396,10 @@ exports.getProductDetailsReport = async (req, res) => {
             },
 
             // Stage 4: Sort alphabetically
-            {
-                $sort: { productTitle: 1 }
-            }
+            { $sort: { productTitle: 1 } }
         ]);
+
+        console.log("📦 Final Product Report Count:", productReport.length);
 
         res.status(200).json({
             success: true,
