@@ -30,7 +30,7 @@ exports.createJobWorker = async (req, res) => {
 
         if (creator.role === "SuperAdmin") {
             superAdminId = creator._id;  // SUPERADMIN DIRECT
-        } 
+        }
         else if (creator.role === "Admin") {
             if (!creator.managingSuperAdmin) {
                 return res.status(400).json({
@@ -38,7 +38,7 @@ exports.createJobWorker = async (req, res) => {
                 });
             }
             superAdminId = creator.managingSuperAdmin;  // ADMIN → ASSIGNED SUPERADMIN
-        } 
+        }
         else {
             return res.status(403).json({
                 message: "Only SuperAdmin or Admin can create job workers"
@@ -64,13 +64,13 @@ exports.createJobWorker = async (req, res) => {
         // Create worker
         const newWorker = await JobWorker.create({
             superAdmin: superAdminId,
-            createdBy: userId, 
+            createdBy: userId,
             name,
             phone,
             email: email.toLowerCase(),
             password: hashedPassword,
             profileImage: req.file ? `/uploads/${req.file.filename}` : null,
-      
+
         });
 
         return res.status(201).json({
@@ -315,7 +315,7 @@ exports.loginJobworker = async (req, res) => {
 
         // Find the job worker by email
         const jobWorker = await JobWorker.findOne({ email: email, isDeleted: false });
-        console.log(jobWorker,"jobWorker------------------")
+        console.log(jobWorker, "jobWorker------------------")
         if (!jobWorker) {
             return res.status(404).json({ message: 'Job worker not found or has been deactivated.' });
         }
@@ -564,7 +564,9 @@ exports.getJobWorkerDashboard = async (req, res) => {
             totalShortage: 0,
             totalSeconds: 0,
             openAssignments: 0,
-            clearedAssignments: 0
+            clearedAssignments: 0,
+            totalChallans: 0   // 👈 add this
+
         };
 
         const groupedByChallan = {};
@@ -613,8 +615,8 @@ exports.getJobWorkerDashboard = async (req, res) => {
                 activeReturnRequestId: assignment.activeReturnRequestId
             });
         }
+        summaryStats.totalChallans = Object.keys(groupedByChallan).length;
 
-      
         const responseData = {
             summary: summaryStats,
             details: Object.values(groupedByChallan) // Convert the grouped object into an array

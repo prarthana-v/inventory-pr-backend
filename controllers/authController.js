@@ -56,7 +56,7 @@ exports.registerUser = async (req, res) => {
                 return res.status(400).json({ message: 'Firm is required for Admin/Employee' });
             }
         }
-        
+
         // SuperAdmin firm check (original logic retained)
         if (role === 'SuperAdmin' && (activeFirm || (accessibleFirms && accessibleFirms.length > 0))) {
             console.warn(`⚠️ SuperAdmin request with firm data. activeFirm: ${activeFirm}, accessibleFirms: ${accessibleFirms}`);
@@ -101,19 +101,20 @@ exports.registerUser = async (req, res) => {
     }
 };
 
-
 exports.loginUser = async (req, res) => {
     try {
         console.log("🔐 [LOGIN] Incoming request body:", req.body);
 
-        const { email, password } = req.body;
+        const { email, password, role } = req.body;
 
         // --- VALIDATION ---
-        if (!email || !password) {
-            console.error(`❌ [LOGIN] Missing fields -> email: ${email}, password: ${password}`);
+        if (!email || !password || !role) {
+            console.error(
+                `❌ [LOGIN] Missing fields -> email: ${email}, password: ${!!password}, role: ${role}`
+            );
             return res.status(400).json({
                 success: false,
-                message: "Email and password are required"
+                message: "Email, password and role are required"
             });
         }
 
@@ -131,7 +132,22 @@ exports.loginUser = async (req, res) => {
             });
         }
 
-        console.log(`👤 [LOGIN] User found: ${user._id}, verifying password...`);
+        console.log(
+            `👤 [LOGIN] User found: ${user._id} | DB Role: ${user.role} | Requested Role: ${role}`
+        );
+
+        // --- ROLE CHECK ---
+        if (user.role !== role) {
+            console.error(
+                `⛔ [LOGIN] Role mismatch -> DB: ${user.role}, Requested: ${role}`
+            );
+            return res.status(403).json({
+                success: false,
+                message: "Access denied for this role"
+            });
+        }
+
+        console.log(`🔐 [LOGIN] Role verified, checking password...`);
 
         const match = await bcrypt.compare(password, user.password);
 
@@ -168,6 +184,7 @@ exports.loginUser = async (req, res) => {
         });
     }
 };
+
 
 exports.loginSaas = async (req, res) => {
     try {
@@ -272,7 +289,7 @@ exports.getAllAdmins = async (req, res) => {
     console.log('🔍 Fetching Admins for SuperAdmin...');
 
     try {
-        console.log(req.body,'req.body-----------')
+        console.log(req.body, 'req.body-----------')
         const { superadminId } = req.body;
 
         // 1. Validate superadminId
